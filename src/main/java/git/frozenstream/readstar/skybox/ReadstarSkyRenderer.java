@@ -202,9 +202,15 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         }
 
         int starCount = starsArray.size();
-        VertexFormat format = DefaultVertexFormat.POSITION_TEX;
+        VertexFormat format = DefaultVertexFormat.POSITION_TEX_COLOR;
         int vtxSize = format.getVertexSize();
-        int totalVertices = starCount * 4;
+        // 预计光晕星数量（Vmag < 2.0 才有光晕）
+        int glowStarCount = 0;
+        for (int i = 0; i < starCount; i++) {
+            if (starsArray.get(i).getAsJsonObject().get("Vmag").getAsFloat() < 2.0f) glowStarCount++;
+        }
+        int totalQuads = starCount + glowStarCount;  // 每星 1 核心 + 某些星额外 1 光晕
+        int totalVertices = totalQuads * 4;
 
         // 如果没有星星数据，返回一个空的缓冲
         if (totalVertices == 0) {
@@ -217,9 +223,11 @@ public class ReadstarSkyRenderer implements AutoCloseable {
             }
         }
 
+        var coreSize = 0.648f;
+        var glowSIze = 1.2f;
+
         try (ByteBufferBuilder buf = ByteBufferBuilder.exactlySized(vtxSize * totalVertices)) {
             BufferBuilder builder = new BufferBuilder(buf, VertexFormat.Mode.QUADS, format);
-
             for (int i = 0; i < starCount; i++) {
                 try {
                     JsonObject star = starsArray.get(i).getAsJsonObject();
@@ -229,25 +237,47 @@ public class ReadstarSkyRenderer implements AutoCloseable {
                     float pz = pos.get(1).getAsFloat();
                     float vmag = star.get("Vmag").getAsFloat();
                     int color = star.get("color").getAsInt();
-                    float size = 1f;
 
-                    Identifier spriteId = Identifier.fromNamespaceAndPath(ReadStar.MODID, "environment/stars/color_" + color);
-                    TextureAtlasSprite sprite = this.starsAtlas.getSprite(spriteId);
-
-                    // Billboard quad：始终面向观察者
+                    // Billboard 变换
                     float starDist = 100.0F;
                     Vector3f center = new Vector3f(px, py, pz).normalize(starDist);
                     Vector3f dirToCenter = new Vector3f(center).negate();
                     Matrix3f rotation = new Matrix3f().rotateTowards(dirToCenter, new Vector3f(0.0F, 1.0F, 0.0F));
 
-                    builder.addVertex(new Vector3f(size, -size, 0.0F).mul(rotation).add(center))
-                        .setUv(sprite.getU0(), sprite.getV0());
-                    builder.addVertex(new Vector3f(size, size, 0.0F).mul(rotation).add(center))
-                        .setUv(sprite.getU1(), sprite.getV0());
-                    builder.addVertex(new Vector3f(-size, size, 0.0F).mul(rotation).add(center))
-                        .setUv(sprite.getU1(), sprite.getV1());
-                    builder.addVertex(new Vector3f(-size, -size, 0.0F).mul(rotation).add(center))
-                        .setUv(sprite.getU0(), sprite.getV1());
+                    // 逐星亮度
+                    int starAlpha = (int) (Mth.clamp((9.0f - vmag) / 10.0f, 0.3f, 1.0f) * 255.0f);
+
+                    // ---- 核心 quad（所有星） ----
+                    Identifier coreId = Identifier.fromNamespaceAndPath(ReadStar.MODID, "environment/stars/color_" + color);
+                    TextureAtlasSprite coreSprite = this.starsAtlas.getSprite(coreId);
+                    builder.addVertex(new Vector3f(coreSize, -coreSize, 0.0F).mul(rotation).add(center))
+                        .setUv(coreSprite.getU0(), coreSprite.getV0()).setColor(255, 255, 255, starAlpha);
+                    builder.addVertex(new Vector3f(coreSize, coreSize, 0.0F).mul(rotation).add(center))
+                        .setUv(coreSprite.getU1(), coreSprite.getV0()).setColor(255, 255, 255, starAlpha);
+                    builder.addVertex(new Vector3f(-coreSize, coreSize, 0.0F).mul(rotation).add(center))
+                        .setUv(coreSprite.getU1(), coreSprite.getV1()).setColor(255, 255, 255, starAlpha);
+                    builder.addVertex(new Vector3f(-coreSize, -coreSize, 0.0F).mul(rotation).add(center))
+                        .setUv(coreSprite.getU0(), coreSprite.getV1()).setColor(255, 255, 255, starAlpha);
+
+                    // ---- 光晕 quad（仅 Vmag < 2.0 的亮星，按亮度分三级） ----
+                    if (vmag < 2.0f) {
+                        String glowLevel;
+                        if (vmag < 0.5f)      glowLevel = "glow_high";
+                        else if (vmag < 1.5f) glowLevel = "glow_med";
+                        else                  glowLevel = "glow_low";
+
+                        String glowPath = "environment/stars/" + glowLevel + "_" + color;
+                        Identifier glowId = Identifier.fromNamespaceAndPath(ReadStar.MODID, glowPath);
+                        TextureAtlasSprite glowSprite = this.starsAtlas.getSprite(glowId);
+                        builder.addVertex(new Vector3f(glowSIze, -glowSIze, 0.0F).mul(rotation).add(center))
+                            .setUv(glowSprite.getU0(), glowSprite.getV0()).setColor(255, 255, 255, starAlpha);
+                        builder.addVertex(new Vector3f(glowSIze, glowSIze, 0.0F).mul(rotation).add(center))
+                            .setUv(glowSprite.getU1(), glowSprite.getV0()).setColor(255, 255, 255, starAlpha);
+                        builder.addVertex(new Vector3f(-glowSIze, glowSIze, 0.0F).mul(rotation).add(center))
+                            .setUv(glowSprite.getU1(), glowSprite.getV1()).setColor(255, 255, 255, starAlpha);
+                        builder.addVertex(new Vector3f(-glowSIze, -glowSIze, 0.0F).mul(rotation).add(center))
+                            .setUv(glowSprite.getU0(), glowSprite.getV1()).setColor(255, 255, 255, starAlpha);
+                    }
 
                 } catch (Exception e) {
                     ReadStar.LOGGER.warn("Failed to build star vertex at index {}: {}", i, e.getMessage());
@@ -256,7 +286,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
 
             try (MeshData mesh = builder.buildOrThrow()) {
                 this.starIndexCount = mesh.drawState().indexCount();
-                ReadStar.LOGGER.info("Built star vertex buffer with {} indices", this.starIndexCount);
+                ReadStar.LOGGER.info("Built star vertex buffer with {} indices ({} stars, {} with glow)", this.starIndexCount, starCount, glowStarCount);
                 return RenderSystem.getDevice().createBuffer(() -> "Stars vertex buffer", 32, mesh.vertexBuffer());
             }
         }
@@ -351,6 +381,11 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         }
     }
 
+    public void afterExtract(SkyRenderState state){
+        ReadStar.LOGGER.info("sunAngle: {}, rainBrightness: {}, starBrightness: {}", state.sunAngle, state.rainBrightness, state.starBrightness);
+        state.starBrightness = Mth.clamp(-Mth.cos(state.sunAngle) * 5.0F, 0.0F, 0.8F) * state.rainBrightness;
+    }
+
     private boolean shouldRenderDarkDisc(float deltaPartialTick, ClientLevel level) {
         return Minecraft.getInstance().player.getEyePosition(deltaPartialTick).y - level.getLevelData().getHorizonHeight(level) < 0.0;
     }
@@ -393,7 +428,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         if (starBrightness > 0.0F) {
             poseStack.pushPose();
             poseStack.mulPose(Axis.XP.rotation(starAngle));
-            this.renderStars(1, poseStack);
+            this.renderStars(starBrightness, poseStack);
             poseStack.popPose();
         }
 
@@ -474,7 +509,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         try (RenderPass renderPass = RenderSystem.getDevice()
                 .createCommandEncoder()
                 .createRenderPass(() -> "Stars", colorTexture, OptionalInt.empty(), depthTexture, OptionalDouble.empty())) {
-            renderPass.setPipeline(RenderPipelines.CELESTIAL);
+            renderPass.setPipeline(ReadStarClient.STAR_TEXTURED_PIPELINE);
             RenderSystem.bindDefaultUniforms(renderPass);
             renderPass.setUniform("DynamicTransforms", dynamicTransforms);
             renderPass.bindTexture("Sampler0", this.starsAtlas.getTextureView(), this.starsAtlas.getSampler());

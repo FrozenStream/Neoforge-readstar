@@ -30,6 +30,8 @@ public class ReadstarSkyboxRenderer implements CustomSkyboxRenderer, ResourceMan
 
     @Override
     public boolean renderSky(LevelRenderState levelRenderState, SkyRenderState skyRenderState, Matrix4fc modelViewMatrix, Runnable setupFog) {
+        this.skyRenderer.afterExtract(skyRenderState);
+
         setupFog.run();
         SkyRenderState state = levelRenderState.skyRenderState;
         if (state.skybox == DimensionType.Skybox.END) {

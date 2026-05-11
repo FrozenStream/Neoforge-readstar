@@ -1,10 +1,17 @@
 package git.frozenstream.readstar;
 
+import com.mojang.blaze3d.pipeline.BlendFunction;
+import com.mojang.blaze3d.pipeline.ColorTargetState;
+import com.mojang.blaze3d.pipeline.RenderPipeline;
+import com.mojang.blaze3d.vertex.DefaultVertexFormat;
+import com.mojang.blaze3d.vertex.VertexFormat;
+import com.mojang.blaze3d.vertex.VertexFormat.Mode;
 import git.frozenstream.readstar.datagen.CelestialSpriteSourceProvider;
 import git.frozenstream.readstar.datagen.StarSpriteSource;
 import git.frozenstream.readstar.skybox.ReadStarCloudsRenderer;
 import git.frozenstream.readstar.skybox.ReadstarSkyboxRenderer;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.client.resources.model.sprite.AtlasManager;
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.level.Level;
@@ -16,6 +23,7 @@ import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent;
 import net.neoforged.neoforge.client.event.AddClientReloadListenersEvent;
 import net.neoforged.neoforge.client.event.ExtractLevelRenderStateEvent;
+import net.neoforged.neoforge.client.event.RegisterRenderPipelinesEvent;
 import net.neoforged.neoforge.client.event.RegisterSpriteSourcesEvent;
 import net.neoforged.neoforge.client.event.RegisterTextureAtlasesEvent;
 import net.neoforged.neoforge.client.gui.ConfigurationScreen;
@@ -34,6 +42,23 @@ public class ReadStarClient {
     public static final Identifier STAR_ATLAS_TEXTURE = Identifier.fromNamespaceAndPath(ReadStar.MODID, "textures/atlas/star.png");
     public static final Identifier STAR_ATLAS_INFO = Identifier.fromNamespaceAndPath(ReadStar.MODID, "star");
 
+    /** 自定义管线：与 CELESTIAL 相同但使用 POSITION_TEX_COLOR（支持逐星亮度 via setColor） */
+    public static RenderPipeline STAR_TEXTURED_PIPELINE;
+
+    @SubscribeEvent
+    static void onRegisterStarPipelines(RegisterRenderPipelinesEvent event) {
+        // 参照 END_SKY（用 core/position_tex_color + POSITION_TEX_COLOR），但 blend 改为 OVERLAY（与 CELESTIAL 一致）
+        STAR_TEXTURED_PIPELINE = RenderPipeline.builder(new RenderPipeline.Snippet[]{RenderPipelines.MATRICES_PROJECTION_SNIPPET})
+                .withLocation(Identifier.fromNamespaceAndPath(ReadStar.MODID, "star_textured"))
+                .withVertexShader("core/position_tex_color")
+                .withFragmentShader("core/position_tex_color")
+                .withSampler("Sampler0")
+                .withColorTargetState(new ColorTargetState(BlendFunction.OVERLAY))
+                .withVertexFormat(DefaultVertexFormat.POSITION_TEX_COLOR, Mode.QUADS)
+                .build();
+        event.registerPipeline(STAR_TEXTURED_PIPELINE);
+        ReadStar.LOGGER.info("Registered custom star pipeline: readstar:star_textured");
+    }
 
     public ReadStarClient(ModContainer container) {
         // Allows NeoForge to create semiMajorAxis config screen for this mod's configs.

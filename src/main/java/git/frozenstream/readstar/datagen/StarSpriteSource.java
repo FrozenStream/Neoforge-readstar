@@ -20,8 +20,8 @@ import java.util.Optional;
 import java.util.Set;
 
 /**
- * 运行时从 stars.json 收集所有不重复的颜色值，为每种颜色生成一张染色光晕子图。
- * 子图 ID 格式：environment/stars/color_<colorInt>。
+ * 运行时为每种颜色生成核心 + 三级光晕子图。
+ * 光晕亮度由核心中心 8×8 区域采样 × 0.35 系数控制，确保远暗于核心。
  */
 public record StarSpriteSource() implements SpriteSource {
 
@@ -30,98 +30,109 @@ public record StarSpriteSource() implements SpriteSource {
 
     public static final MapCodec<StarSpriteSource> CODEC = MapCodec.unit(new StarSpriteSource());
 
-    /** 预生成的灰度 RGBA 基准图（32×32，R=G=B=亮度，保留 alpha） */
-    private static final Identifier BASE_TEXTURE_PATH =
-            Identifier.fromNamespaceAndPath(ReadStar.MODID, "textures/environment/star/star_base.png");
+    private static final String TEX_DIR = "textures/environment/star/";
 
-    private static float[][] loadBasePattern(ResourceManager resourceManager) {
-        Optional<net.minecraft.server.packs.resources.Resource> resOpt = resourceManager.getResource(BASE_TEXTURE_PATH);
-        if (resOpt.isEmpty()) {
-            throw new RuntimeException("Missing required texture: " + BASE_TEXTURE_PATH);
-        }
-        try (InputStream in = resOpt.get().open()) {
+    private static float[][] loadPattern(Identifier path, ResourceManager manager) {
+        Optional<net.minecraft.server.packs.resources.Resource> res = manager.getResource(path);
+        if (res.isEmpty()) throw new RuntimeException("Missing texture: " + path);
+        try (InputStream in = res.get().open()) {
             NativeImage source = NativeImage.read(in);
             try {
                 float[][] pattern = new float[WIDTH][HEIGHT];
                 int w = Math.min(source.getWidth(), WIDTH);
                 int h = Math.min(source.getHeight(), HEIGHT);
-                for (int x = 0; x < w; x++) {
-                    for (int y = 0; y < h; y++) {
-                        int pixel = source.getPixel(x, y);
-                        pattern[x][y] = ((pixel >> 16) & 0xFF) / 255.0f;
-                    }
-                }
+                for (int x = 0; x < w; x++)
+                    for (int y = 0; y < h; y++)
+                        pattern[x][y] = ((source.getPixel(x, y) >> 16) & 0xFF) / 255.0f;
                 return pattern;
-            } finally {
-                source.close();
-            }
+            } finally { source.close(); }
         } catch (Exception e) {
-            throw new RuntimeException("Failed to load base star texture: " + BASE_TEXTURE_PATH, e);
+            throw new RuntimeException("Failed to load texture: " + path, e);
         }
     }
 
-    private static NativeImage createTintedImage(float[][] pattern, int starColor) {
-        NativeImage image = new NativeImage(WIDTH, HEIGHT, false);
-        int colorR = (starColor >> 16) & 0xFF;
-        int colorG = (starColor >> 8) & 0xFF;
-        int colorB = starColor & 0xFF;
-        for (int x = 0; x < WIDTH; x++) {
+    /** 采样核心中心 8×8 区域平均亮度，用于确定光晕亮度上限 */
+    private static float sampleCoreBrightness(float[][] corePattern) {
+        int c = WIDTH / 2; // 16
+        float sum = 0;
+        int count = 0;
+        for (int x = c - 4; x < c + 4; x++)
+            for (int y = c - 4; y < c + 4; y++) {
+                sum += corePattern[x][y];
+                count++;
+            }
+        return sum / count;
+    }
+
+    private static NativeImage createTinted(float[][] pattern, int color, float brightnessMul) {
+        NativeImage img = new NativeImage(WIDTH, HEIGHT, false);
+        int cR = (color >> 16) & 0xFF, cG = (color >> 8) & 0xFF, cB = color & 0xFF;
+        for (int x = 0; x < WIDTH; x++)
             for (int y = 0; y < HEIGHT; y++) {
-                float intensity = pattern[x][y];
-                int r = (int) (colorR * intensity);
-                int g = (int) (colorG * intensity);
-                int b = (int) (colorB * intensity);
-                image.setPixel(x, y, (0xFF << 24) | (r << 16) | (g << 8) | b);
+                float i = pattern[x][y] * brightnessMul;
+                img.setPixel(x, y, (0xFF << 24) | ((int)(cR*i) << 16) | ((int)(cG*i) << 8) | (int)(cB*i));
             }
-        }
-        return image;
+        return img;
     }
 
-    @Override
-    public void run(ResourceManager resourceManager, Output output) {
-        float[][] basePattern = loadBasePattern(resourceManager);
+    private static final String[][] GLOW_LAYERS = {
+        {"star_glow_low.png",  "glow_low"},
+        {"star_glow_med.png",  "glow_med"},
+        {"star_glow_high.png", "glow_high"},
+    };
 
-        Identifier starsDataPath = Identifier.fromNamespaceAndPath(ReadStar.MODID, "custom/stars/stars.json");
-        Optional<net.minecraft.server.packs.resources.Resource> resourceOpt = resourceManager.getResource(starsDataPath);
-        if (resourceOpt.isEmpty()) {
-            ReadStar.LOGGER.warn("Star data file not found: {}", starsDataPath);
-            return;
+    @Override
+    public void run(ResourceManager manager, Output output) {
+        float[][] corePattern = loadPattern(
+                Identifier.fromNamespaceAndPath(ReadStar.MODID, TEX_DIR + "star_base.png"), manager);
+
+        // 采样核心中心亮度，光晕亮度 = 核心亮度 × 0.35（显著暗于核心）
+        float coreBrightness = sampleCoreBrightness(corePattern);
+        float glowMul = coreBrightness * 0.35f;
+        ReadStar.LOGGER.info("Core center brightness: {}", coreBrightness);
+
+        float[][][] glowPatterns = new float[GLOW_LAYERS.length][][];
+        for (int i = 0; i < GLOW_LAYERS.length; i++) {
+            Identifier path = Identifier.fromNamespaceAndPath(ReadStar.MODID, TEX_DIR + GLOW_LAYERS[i][0]);
+            glowPatterns[i] = loadPattern(path, manager);
         }
 
-        try (InputStreamReader reader = new InputStreamReader(resourceOpt.get().open(), StandardCharsets.UTF_8)) {
-            JsonArray starsArray = JsonParser.parseReader(reader).getAsJsonObject().getAsJsonArray("Stars");
+        Identifier dataPath = Identifier.fromNamespaceAndPath(ReadStar.MODID, "custom/stars/stars.json");
+        Optional<net.minecraft.server.packs.resources.Resource> r = manager.getResource(dataPath);
+        if (r.isEmpty()) { ReadStar.LOGGER.warn("Star data not found: {}", dataPath); return; }
 
-            // 收集不重复的颜色值
-            Set<Integer> uniqueColors = new HashSet<>();
-            for (int i = 0; i < starsArray.size(); i++) {
-                JsonObject starObj = starsArray.get(i).getAsJsonObject();
-                if (starObj.has("color")) {
-                    uniqueColors.add(starObj.get("color").getAsInt());
-                }
+        try (InputStreamReader reader = new InputStreamReader(r.get().open(), StandardCharsets.UTF_8)) {
+            JsonArray arr = JsonParser.parseReader(reader).getAsJsonObject().getAsJsonArray("Stars");
+            Set<Integer> colors = new HashSet<>();
+            for (int i = 0; i < arr.size(); i++) {
+                JsonObject o = arr.get(i).getAsJsonObject();
+                if (o.has("color")) colors.add(o.get("color").getAsInt());
             }
 
-            ReadStar.LOGGER.info("Generating {} tinted glow sprites ({} unique colors)", uniqueColors.size(), uniqueColors.size());
+            int total = colors.size() * (1 + GLOW_LAYERS.length);
+            ReadStar.LOGGER.info("Generating {} sprites ({} colors × 1 core + {} glow layers)", total, colors.size(), GLOW_LAYERS.length);
 
-            for (int color : uniqueColors) {
-                Identifier spriteId = Identifier.fromNamespaceAndPath(
-                        ReadStar.MODID, "environment/stars/color_" + color);
-                NativeImage image = createTintedImage(basePattern, color);
-                try {
-                    FrameSize size = new FrameSize(WIDTH, HEIGHT);
-                    SpriteContents contents = new SpriteContents(spriteId, size, image);
-                    output.add(spriteId, (SpriteSource.DiscardableLoader) loader -> contents);
-                } catch (Throwable t) {
-                    image.close();
-                    ReadStar.LOGGER.error("Failed to create sprite for color {}: {}", color, t.getMessage());
+            for (int color : colors) {
+                // 核心（满亮度）
+                Identifier coreId = Identifier.fromNamespaceAndPath(ReadStar.MODID, "environment/stars/color_" + color);
+                NativeImage coreImg = createTinted(corePattern, color, 1.0f);
+                try { output.add(coreId, (SpriteSource.DiscardableLoader) l -> new SpriteContents(coreId, new FrameSize(WIDTH, HEIGHT), coreImg)); }
+                catch (Throwable t) { coreImg.close(); ReadStar.LOGGER.error("Failed core sprite for color {}", color, t); }
+
+                // 三级光晕（低亮度）
+                for (int g = 0; g < GLOW_LAYERS.length; g++) {
+                    String layerPrefix = GLOW_LAYERS[g][1];
+                    Identifier glowId = Identifier.fromNamespaceAndPath(ReadStar.MODID, "environment/stars/" + layerPrefix + "_" + color);
+                    NativeImage glowImg = createTinted(glowPatterns[g], color, glowMul);
+                    try { output.add(glowId, (SpriteSource.DiscardableLoader) l -> new SpriteContents(glowId, new FrameSize(WIDTH, HEIGHT), glowImg)); }
+                    catch (Throwable t) { glowImg.close(); ReadStar.LOGGER.error("Failed {} sprite for color {}", layerPrefix, color, t); }
                 }
             }
         } catch (Exception e) {
-            ReadStar.LOGGER.error("Failed to read star data from {}: {}", starsDataPath, e.getMessage());
+            ReadStar.LOGGER.error("Failed to read star data", e);
         }
     }
 
     @Override
-    public MapCodec<? extends SpriteSource> codec() {
-        return CODEC;
-    }
+    public MapCodec<? extends SpriteSource> codec() { return CODEC; }
 }
