@@ -1,0 +1,18 @@
+{
+  "itemGroup.readstar": "占星术",
+
+  "block.examplemod.example_block": "Example Block",
+  "item.examplemod.example_item": "Example Item",
+  "item.readstar.astronomical_manuscript": "天文手稿",
+  "screen.readstar.astronomical_manuscript": "天文手稿",
+
+  "planet.readstar.sun": "太阳",
+  "planet.readstar.earth": "地球",
+  "planet.readstar.mars": "火星",
+  "planet.readstar.moon": "月球",
+
+  "planetdesc.readstar.sun": "太阳是位于太阳系中心的恒星。它是一个几乎完美的热等离子体球，通过其核心的核聚变反应加热至白炽状态，主要以光和太阳风的形式辐射能量。",
+  "planetdesc.readstar.earth": "地球是距离太阳第三近的行星，也是目前已知唯一存在生命的天体。尽管太阳系中许多地方都存在水，但只有地球拥有液态水表面和水循环系统。",
+  "planetdesc.readstar.mars": "火星是距离太阳第四近的行星，也是太阳系中第二小的行星。由于其表面氧化铁的存在，常被称为'红色星球'。",
+  "planetdesc.readstar.moon": "月球是地球唯一的天然卫星。大约在45亿年前形成，很可能来源于一个火星大小的天体与早期地球碰撞所产生的碎片，是太阳系中第五大卫星。"
+}

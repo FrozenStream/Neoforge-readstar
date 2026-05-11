@@ -1,0 +1,20 @@
+{
+  "itemGroup.readstar": "Read Star",
+
+  "block.examplemod.example_block": "Example Block",
+  "item.examplemod.example_item": "Example Item",
+  "item.readstar.astronomical_manuscript": "Astronomical Manuscript",
+  "screen.readstar.astronomical_manuscript": "Astronomical Manuscript",
+
+  "planet.readstar.sun": "Sun",
+  "planet.readstar.earth": "Earth",
+  "planet.readstar.mars": "Mars",
+  "planet.readstar.moon": "Moon",
+
+  "planetdesc.readstar.sun": "The Sun is the star at the center of the Solar System. It is a nearly perfect sphere of hot plasma, heated to incandescence by nuclear fusion reactions in its core, radiating the energy mainly as light and solar wind.",
+  "planetdesc.readstar.earth": "Earth is the third planet from the Sun and the only astronomical object known to harbor life. While large amounts of water can be found throughout the Solar System, only Earth sustains a water cycle with liquid surface water.",
+  "planetdesc.readstar.mars": "Mars is the fourth planet from the Sun and the second-smallest planet in the Solar System. Often called the 'Red Planet' due to its reddish appearance, caused by iron oxide on its surface.",
+  "planetdesc.readstar.moon": "The Moon is Earth's only natural satellite. Formed approximately 4.5 billion years ago, likely from the debris of a Mars-sized body colliding with early Earth, it is the fifth largest satellite in the Solar System."
+
+
+}

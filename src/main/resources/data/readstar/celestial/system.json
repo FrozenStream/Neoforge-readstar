@@ -1,0 +1,82 @@
+{
+  "System": {
+    "Sun": {
+      "mass": 2.0e30,
+      "radius": 6.955e8,
+      "luminance": 15,
+      "axis": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "orbit": {
+        "semiMajorAxis": 0.0,
+        "eccentricity": 0.0,
+        "inclination": 0.0,
+        "argumentOfPeriapsis": 0.0,
+        "longitudeOfAscendingNode": 0.0,
+        "initialMeanAnomaly": 0.0
+      },
+      "children": {
+        "Earth": {
+          "mass": 6.0e24,
+          "radius": 6.371e6,
+          "luminance": 0,
+          "axis": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "orbit": {
+            "semiMajorAxis": 1.496e11,
+            "eccentricity": 0.0,
+            "inclination": 0.0,
+            "argumentOfPeriapsis": 0.0,
+            "longitudeOfAscendingNode": 0.0,
+            "initialMeanAnomaly": 0.0
+          },
+          "children": {
+            "Moon": {
+              "mass": 7.0e22,
+              "radius": 1.737e6,
+              "luminance": 0,
+              "axis": [
+                0.0,
+                0.0,
+                0.5
+              ],
+              "orbit": {
+                "semiMajorAxis": 3.844e8,
+                "eccentricity": 0.0,
+                "inclination": 0.0,
+                "argumentOfPeriapsis": 0.0,
+                "longitudeOfAscendingNode": 0.0,
+                "initialMeanAnomaly": 0.0
+              },
+              "children": {}
+            }
+          }
+        },
+        "Mars": {
+          "mass": 6.4171e23,
+          "radius": 3.3895e6,
+          "luminance": 0,
+          "axis": [
+            0.0,
+            0.0,
+            0.0
+          ],
+          "orbit": {
+            "semiMajorAxis": 2.278e11,
+            "eccentricity": 0.09341,
+            "inclination": 0.03229,
+            "argumentOfPeriapsis": 0.0,
+            "longitudeOfAscendingNode": 0.865,
+            "initialMeanAnomaly": 0.0
+          },
+          "children": {}
+        }
+      }
+    }
+  }
+}
