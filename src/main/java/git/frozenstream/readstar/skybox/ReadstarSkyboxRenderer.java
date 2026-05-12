@@ -1,21 +1,15 @@
 package git.frozenstream.readstar.skybox;
 
-import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.*;
-import git.frozenstream.readstar.ReadStar;
 import git.frozenstream.readstar.elements.CelestialBody;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.renderer.SkyRenderer;
 import net.minecraft.client.renderer.state.level.LevelRenderState;
 import net.minecraft.client.renderer.state.level.SkyRenderState;
-import net.minecraft.resources.Identifier;
 import net.minecraft.server.packs.resources.ResourceManager;
 import net.minecraft.server.packs.resources.ResourceManagerReloadListener;
 import net.minecraft.world.level.dimension.DimensionType;
-import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.client.CustomSkyboxRenderer;
 import org.joml.Matrix4fc;
-import org.joml.Vector3f;
 
 
 public class ReadstarSkyboxRenderer implements CustomSkyboxRenderer, ResourceManagerReloadListener {

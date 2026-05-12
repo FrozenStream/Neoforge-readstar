@@ -25,7 +25,6 @@ import net.minecraft.client.renderer.texture.TextureAtlas;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.client.renderer.texture.TextureManager;
 import net.minecraft.client.resources.model.sprite.AtlasManager;
-import net.minecraft.data.AtlasIds;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.packs.resources.ResourceManager;
 import net.minecraft.util.ARGB;
@@ -46,10 +45,9 @@ import java.util.OptionalInt;
 public class ReadstarSkyRenderer implements AutoCloseable {
     public static CelestialBody Observer;
 
-    private static final Identifier SUN_SPRITE = Identifier.withDefaultNamespace("sun");
-    private static final Identifier END_FLASH_SPRITE = Identifier.withDefaultNamespace("end_flash");
-    private static final Identifier END_SKY_LOCATION = Identifier
-            .withDefaultNamespace("textures/environment/end_sky.png");
+    private static final Identifier SUN_SPRITE = Identifier.fromNamespaceAndPath("minecraft", "environment/celestial/sun");
+    private static final Identifier END_FLASH_SPRITE = Identifier.fromNamespaceAndPath("minecraft", "environment/celestial/end_flash");
+    private static final Identifier END_SKY_LOCATION = Identifier.withDefaultNamespace("textures/environment/end_sky.png");
     private static final float SKY_DISC_RADIUS = 512.0F;
     private static final int SKY_VERTICES = 10;
     private static final float SUN_SIZE = 30.0F;
@@ -77,7 +75,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
 
     public ReadstarSkyRenderer(TextureManager textureManager, AtlasManager atlasManager,
             ResourceManager resourceManager) {
-        this.celestialsAtlas = atlasManager.getAtlasOrThrow(AtlasIds.CELESTIALS);
+        this.celestialsAtlas = atlasManager.getAtlasOrThrow(ReadStarClient.CELESTIAL_ATLAS_INFO);
         this.starsAtlas = atlasManager.getAtlasOrThrow(ReadStarClient.STAR_ATLAS_INFO);
         this.starBuffer = this.buildStars(resourceManager);
         this.endSkyBuffer = buildEndSky();
@@ -87,23 +85,19 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         this.moonBuffer = buildMoonPhases(this.celestialsAtlas);
         this.sunriseBuffer = this.buildSunriseFan();
 
-        try (ByteBufferBuilder builder = ByteBufferBuilder
-                .exactlySized(10 * DefaultVertexFormat.POSITION.getVertexSize())) {
-            BufferBuilder bufferBuilder = new BufferBuilder(builder, VertexFormat.Mode.TRIANGLE_FAN,
-                    DefaultVertexFormat.POSITION);
+        try (ByteBufferBuilder builder = ByteBufferBuilder.exactlySized(10 * DefaultVertexFormat.POSITION.getVertexSize())) {
+            BufferBuilder bufferBuilder = new BufferBuilder(builder, VertexFormat.Mode.TRIANGLE_FAN, DefaultVertexFormat.POSITION);
             this.buildSkyDisc(bufferBuilder, 16.0F);
 
             try (MeshData meshData = bufferBuilder.buildOrThrow()) {
-                this.topSkyBuffer = RenderSystem.getDevice().createBuffer(() -> "Top sky vertex buffer", 32,
-                        meshData.vertexBuffer());
+                this.topSkyBuffer = RenderSystem.getDevice().createBuffer(() -> "Top sky vertex buffer", 32, meshData.vertexBuffer());
             }
 
             bufferBuilder = new BufferBuilder(builder, VertexFormat.Mode.TRIANGLE_FAN, DefaultVertexFormat.POSITION);
             this.buildSkyDisc(bufferBuilder, -16.0F);
 
             try (MeshData meshData = bufferBuilder.buildOrThrow()) {
-                this.bottomSkyBuffer = RenderSystem.getDevice().createBuffer(() -> "Bottom sky vertex buffer", 32,
-                        meshData.vertexBuffer());
+                this.bottomSkyBuffer = RenderSystem.getDevice().createBuffer(() -> "Bottom sky vertex buffer", 32, meshData.vertexBuffer());
             }
         }
     }
@@ -118,8 +112,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
 
         GpuBuffer var16;
         try (ByteBufferBuilder byteBufferBuilder = ByteBufferBuilder.exactlySized(18 * vtxSize)) {
-            BufferBuilder bufferBuilder = new BufferBuilder(byteBufferBuilder, VertexFormat.Mode.TRIANGLE_FAN,
-                    DefaultVertexFormat.POSITION_COLOR);
+            BufferBuilder bufferBuilder = new BufferBuilder(byteBufferBuilder, VertexFormat.Mode.TRIANGLE_FAN, DefaultVertexFormat.POSITION_COLOR);
             int centerColor = ARGB.white(1.0F);
             int ringColor = ARGB.white(0.0F);
             bufferBuilder.addVertex(0.0F, 100.0F, 0.0F).setColor(centerColor);
@@ -176,8 +169,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
             BufferBuilder bufferBuilder = new BufferBuilder(byteBufferBuilder, VertexFormat.Mode.QUADS, format);
 
             for (MoonPhase phase : phases) {
-                TextureAtlasSprite sprite = atlas
-                        .getSprite(Identifier.withDefaultNamespace("moon/" + phase.getSerializedName()));
+                TextureAtlasSprite sprite = atlas.getSprite(Identifier.fromNamespaceAndPath("minecraft", "environment/celestial/moon/" + phase.getSerializedName()));
                 bufferBuilder.addVertex(-1.0F, 0.0F, -1.0F).setUv(sprite.getU1(), sprite.getV1());
                 bufferBuilder.addVertex(1.0F, 0.0F, -1.0F).setUv(sprite.getU0(), sprite.getV1());
                 bufferBuilder.addVertex(1.0F, 0.0F, 1.0F).setUv(sprite.getU0(), sprite.getV0());

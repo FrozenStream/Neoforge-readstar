@@ -1,4 +1,4 @@
-# ReadStar — NeoForge 1.21 天文模组
+# ReadStar — NeoForge 26.1 天文模组
 
 基于真实天体力学与星表数据的 Minecraft 天象模组。支持行星轨道系统、恒星目录、三级光晕渲染、服务端同步的行星系统配置。
 

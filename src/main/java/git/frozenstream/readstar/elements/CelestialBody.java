@@ -1,9 +1,6 @@
 package git.frozenstream.readstar.elements;
 
 import org.joml.Vector3f;
-
-import git.frozenstream.readstar.ReadStar;
-
 import java.util.ArrayList;
 
 /**

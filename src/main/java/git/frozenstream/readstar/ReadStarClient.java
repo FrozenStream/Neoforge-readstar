@@ -81,7 +81,6 @@ public class ReadStarClient {
         event.register(
                 Identifier.fromNamespaceAndPath(ReadStar.MODID, "star"),
                 StarSpriteSource.CODEC);
-        ReadStar.LOGGER.info("Registered sprite-source codec: readstar:star via event");
     }
 
     @SubscribeEvent
