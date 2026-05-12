@@ -103,11 +103,12 @@ public class ReadStarClient {
         long daylightTime = event.getLevel().getDefaultClockTime();
 
         CelestialBodyManager.getInstance().updatePositions(gameTime);
-        if (CelestialBodyManager.getInstance().hasCelestialBody("earth")) {
-            CelestialBody earth = CelestialBodyManager.getInstance().getCelestialBody("earth");
-            skyboxRenderer.updateObserver(earth, daylightTime);
-        }
+
         if (event.getLevel().dimension() == Level.OVERWORLD) {
+            if (CelestialBodyManager.getInstance().hasCelestialBody("earth")) {
+                CelestialBody earth = CelestialBodyManager.getInstance().getCelestialBody("earth");
+                skyboxRenderer.updateObserver(earth, daylightTime);
+            }
             event.getRenderState().customSkyboxRenderer = skyboxRenderer;
             event.getRenderState().customCloudsRenderer = new ReadStarCloudsRenderer();
         }

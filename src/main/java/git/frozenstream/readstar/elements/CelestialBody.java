@@ -114,12 +114,14 @@ public class CelestialBody {
     /**
      * 获取天体的自转轴方向向量
      * 如果自转轴未设置或为零向量，则返回默认值 (0, 0, -1)
+     * 注意：返回的是归一化后的向量（修改原向量），确保下游 Gram-Schmidt 和 rotateAxis 计算正确
      *
      * @return 归一化的自转轴方向向量
      */
     public Vector3f getRotationAxis() {
         if (rotationAxis == null) rotationAxis = new Vector3f(0, 0, -1);
         if (rotationAxis.lengthSquared() == 0f) rotationAxis.set(0, 0, -1);
+        rotationAxis.normalize();
         return rotationAxis;
     }
 

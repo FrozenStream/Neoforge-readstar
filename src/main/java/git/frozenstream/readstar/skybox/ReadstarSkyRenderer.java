@@ -473,7 +473,6 @@ public class ReadstarSkyRenderer implements AutoCloseable {
             Vector3f zAxis = new Vector3f(Observer.getRotationAxis()).normalize();
             if (yAxis.lengthSquared() > 0.001f && zAxis.lengthSquared() > 0.001f) {
                 Vector3f xAxis = new Vector3f(yAxis).cross(zAxis).normalize();
-                zAxis = new Vector3f(xAxis).cross(yAxis).normalize();
                 // 构建标准正交基矩阵 [X | Y | Z]，映射 LOCAL→WORLD
                 Matrix3f basis = new Matrix3f();
                 basis.m00(xAxis.x); basis.m10(xAxis.y); basis.m20(xAxis.z);
