@@ -77,21 +77,6 @@ public class CelestialBodyManager {
     public void updatePositions(long t) {
         Root.children.forEach(child -> child.updatePosition(t));
     }
-    
-
-    /**
-     * 获取目标天体在观察者视野中的亮面
-     * @param observer 观察者
-     * @param target 目标天体
-     * @return 亮面类型ID
-     */
-    public int getLightPhase(Vector3f observer, CelestialBody target){
-        Vector3f tar_sun = (new Vector3f()).set(target.hostStar.position).sub(target.position).normalize();
-        Vector3f tar_obs = (new Vector3f()).set(observer).sub(target.position).normalize();
-        float dot = tar_sun.dot(tar_obs);
-        double theta = Math.acos(dot) / Math.PI;
-        return (int) (theta * 5);
-    }
 
     /**
      * 获取目标天体在观察者视野中的大小
@@ -102,7 +87,7 @@ public class CelestialBodyManager {
     public float getApparentSize(Vector3f observer, CelestialBody target) {
         float distance = observer.distance(target.position);
         float k = (float) (target.radius / distance);
-        return Math.max(1.024f, k * 2e3f);
+        return Math.max(1.024f, k * 4e3f);
     }
 
     /**

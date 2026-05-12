@@ -34,9 +34,9 @@ public class ReadStarNetwork {
 
         // 注册行星系统配置数据包
         registrar.playToClient(
-                PlanetSystemPayload.TYPE,
-                PlanetSystemPayload.STREAM_CODEC,
-                PlanetSystemPayload::handle
+                CelestialSystemPayload.TYPE,
+                CelestialSystemPayload.STREAM_CODEC,
+                CelestialSystemPayload::handle
         );
 
         ReadStar.LOGGER.info("已注册 ReadStar 网络包处理器");

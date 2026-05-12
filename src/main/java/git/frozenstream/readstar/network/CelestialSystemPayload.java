@@ -15,9 +15,9 @@ import net.neoforged.neoforge.network.handling.IPayloadContext;
  * 服务端向客户端发送行星系统配置的网络包
  * 直接传输原始 JSON 字符串，由客户端负责解析
  */
-public record PlanetSystemPayload(String jsonData) implements CustomPacketPayload {
+public record CelestialSystemPayload(String jsonData) implements CustomPacketPayload {
     public static final Identifier ID = Identifier.fromNamespaceAndPath(ReadStar.MODID, "planet_system");
-    public static final Type<PlanetSystemPayload> TYPE = new Type<>(ID);
+    public static final Type<CelestialSystemPayload> TYPE = new Type<>(ID);
     
     private static final Gson GSON = new Gson();
     
@@ -25,11 +25,11 @@ public record PlanetSystemPayload(String jsonData) implements CustomPacketPayloa
      * StreamCodec 用于序列化和反序列化数据包
      * 直接传输原始 JSON 字符串
      */
-    public static final StreamCodec<RegistryFriendlyByteBuf, PlanetSystemPayload> STREAM_CODEC = 
+    public static final StreamCodec<RegistryFriendlyByteBuf, CelestialSystemPayload> STREAM_CODEC = 
         StreamCodec.composite(
             ByteBufCodecs.STRING_UTF8,  // String 的编解码器
-            PlanetSystemPayload::jsonData,  // 获取 jsonData 字段
-            PlanetSystemPayload::new       // 构造函数引用
+            CelestialSystemPayload::jsonData,  // 获取 jsonData 字段
+            CelestialSystemPayload::new       // 构造函数引用
         );
 
     /**

@@ -19,10 +19,10 @@ import java.util.Map;
  * 行星系统资源重载监听器（服务端）
  * 负责从 JSON 文件读取行星配置，并在加载完成后发送给所有客户端
  */
-public class PlanetReloader extends SimpleJsonResourceReloadListener<JsonObject> {
+public class CelestialReloader extends SimpleJsonResourceReloadListener<JsonObject> {
 
     private static final FileToIdConverter LISTER = FileToIdConverter.json("celestial");
-    private static final Identifier PLANET_SYSTEM_ID = Identifier.fromNamespaceAndPath(ReadStar.MODID, "system");
+    private static final Identifier SYSTEM_ID = Identifier.fromNamespaceAndPath(ReadStar.MODID, "system");
     private static final Gson GSON = new Gson();
     
     // 缓存最后一次加载的行星系统数据
@@ -41,7 +41,7 @@ public class PlanetReloader extends SimpleJsonResourceReloadListener<JsonObject>
         jsonObject -> new com.mojang.serialization.Dynamic<>(JsonOps.INSTANCE, jsonObject)
     );
 
-    public PlanetReloader() {
+    public CelestialReloader() {
         super(
             JSON_OBJECT_CODEC,
             LISTER
@@ -52,9 +52,9 @@ public class PlanetReloader extends SimpleJsonResourceReloadListener<JsonObject>
     protected void apply(Map<Identifier, JsonObject> prepared, ResourceManager resourceManager, ProfilerFiller profiler) {
         ReadStar.LOGGER.info("PlanetReloader: prepared map size: {}", prepared.size());
 
-        JsonObject jsonObject = prepared.get(PLANET_SYSTEM_ID);
+        JsonObject jsonObject = prepared.get(SYSTEM_ID);
         if (jsonObject == null) {
-            ReadStar.LOGGER.error("PlanetReloader: Could not find system.json with identifier: {}", PLANET_SYSTEM_ID);
+            ReadStar.LOGGER.error("PlanetReloader: Could not find system.json with identifier: {}", SYSTEM_ID);
             return;
         }
 
@@ -84,7 +84,7 @@ public class PlanetReloader extends SimpleJsonResourceReloadListener<JsonObject>
      * 向所有在线玩家发送行星系统数据
      */
     private void sendToAllPlayers(String jsonData) {
-        PacketDistributor.sendToAllPlayers(new PlanetSystemPayload(jsonData));
+        PacketDistributor.sendToAllPlayers(new CelestialSystemPayload(jsonData));
         ReadStar.LOGGER.info("PlanetReloader: Sent planet system data to all clients");
     }
 }

@@ -35,8 +35,8 @@ import net.neoforged.neoforge.registries.DeferredItem;
 import net.neoforged.neoforge.registries.DeferredRegister;
 
 import git.frozenstream.readstar.network.NetworkHelper;
-import git.frozenstream.readstar.network.PlanetReloader;
-import git.frozenstream.readstar.network.PlanetSystemPayload;
+import git.frozenstream.readstar.network.CelestialReloader;
+import git.frozenstream.readstar.network.CelestialSystemPayload;
 import git.frozenstream.readstar.command.TestMessageCommand;
 import net.neoforged.neoforge.network.PacketDistributor;
 
@@ -123,7 +123,7 @@ public class ReadStar {
     @SubscribeEvent
     public void onRegisterServerReloadListeners(AddServerReloadListenersEvent event) {
         Identifier PLANET_SYSTEM_ID = Identifier.fromNamespaceAndPath(ReadStar.MODID, "celestial/server");
-        event.addListener(PLANET_SYSTEM_ID, new PlanetReloader());
+        event.addListener(PLANET_SYSTEM_ID, new CelestialReloader());
     }
 
 
@@ -142,11 +142,11 @@ public class ReadStar {
             );
             
             // 发送行星系统数据给新登录的玩家
-            String planetData = PlanetReloader.getCachedPlanetData();
+            String planetData = CelestialReloader.getCachedPlanetData();
             if (planetData != null) {
                 PacketDistributor.sendToPlayer(
                     serverPlayer,
-                    new PlanetSystemPayload(planetData)
+                    new CelestialSystemPayload(planetData)
                 );
                 LOGGER.info("Sent cached planet system data to player: {}", serverPlayer.getName().getString());
             }
