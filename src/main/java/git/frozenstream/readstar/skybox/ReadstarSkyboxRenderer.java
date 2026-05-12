@@ -59,6 +59,5 @@ public class ReadstarSkyboxRenderer implements CustomSkyboxRenderer, ResourceMan
     public void updateObserver(CelestialBody body,long daylightTime){
         ReadstarSkyRenderer.Observer = body;
         body.updateCurrentVec(daylightTime);
-        ReadStar.LOGGER.debug("Observer: {}", ReadstarSkyRenderer.Observer.currentRotationVector);
     }
 }

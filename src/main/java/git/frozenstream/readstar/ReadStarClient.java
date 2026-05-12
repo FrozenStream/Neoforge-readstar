@@ -102,7 +102,7 @@ public class ReadStarClient {
         long gameTime = event.getLevel().getGameTime();
         long daylightTime = event.getLevel().getDefaultClockTime();
 
-        CelestialBodyManager.getInstance().updatePositions(gameTime);
+        CelestialBodyManager.getInstance().updatePositions(20*gameTime);
 
         if (event.getLevel().dimension() == Level.OVERWORLD) {
             if (CelestialBodyManager.getInstance().hasCelestialBody("earth")) {

@@ -492,9 +492,10 @@ public class ReadstarSkyRenderer implements AutoCloseable {
                 Vector3f toWorld = new Vector3f(earth.hostStar.position).sub(observerPos);
                 if (toWorld.lengthSquared() > 0.0001f) {
                     toWorld.normalize();
+                    float size = manager.getApparentSize(observerPos, earth.hostStar);
                     poseStack.pushPose();
                     poseStack.mulPose(new Quaternionf().rotateTo(new Vector3f(0, 1, 0), toWorld));
-                    this.renderSun(rainBrightness, poseStack);
+                    this.renderSun(size, rainBrightness, poseStack);
                     poseStack.popPose();
                 }
             }
@@ -506,9 +507,10 @@ public class ReadstarSkyRenderer implements AutoCloseable {
                 if (toWorld.lengthSquared() > 0.0001f) {
                     toWorld.normalize();
                     MoonPhase phase = computeMoonPhase(observerPos, moonBody);
+                    float size = manager.getApparentSize(observerPos, moonBody);
                     poseStack.pushPose();
                     poseStack.mulPose(new Quaternionf().rotateTo(new Vector3f(0, 1, 0), toWorld));
-                    this.renderMoon(phase, rainBrightness, poseStack);
+                    this.renderMoon(phase, size, rainBrightness, poseStack);
                     poseStack.popPose();
                 }
             }
@@ -534,26 +536,52 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         return null;
     }
 
-    /** 从天体几何计算月相（利用观察者-目标-恒星夹角） */
+    /** 从天体几何计算月相，完整映射卫星绕行一周的 8 种月相 */
     private static MoonPhase computeMoonPhase(Vector3f observer, CelestialBody target) {
         if (target.hostStar == null)
             return MoonPhase.values()[0];
-        Vector3f tarSun = new Vector3f(target.hostStar.position).sub(target.position).normalize();
-        Vector3f tarObs = new Vector3f(observer).sub(target.position).normalize();
-        float dot = tarSun.dot(tarObs);
-        // θ: 0=满月(观察者在阳面), 1=新月(阴面)
-        float theta = (float) Math.acos(dot) / (float) Math.PI;
-        int idx = (int) Math.round(theta * 4); // 0~4 映射到 FULL~NEW
-        idx = Math.min(idx, 4);
-        return MoonPhase.values()[idx];
+
+        // 观测者→天体 和 观测者→恒星 的方向（从地球看月亮和太阳）
+        Vector3f obsToMoon = new Vector3f(target.position).sub(observer).normalize();
+        Vector3f obsToSun  = new Vector3f(target.hostStar.position).sub(observer).normalize();
+
+        // 相位角 φ = acos(dot): 0=新月(同向), π=满月(反向)
+        float dot = obsToMoon.dot(obsToSun);
+        double phi = Math.acos(dot);           // [0, π]
+        double t   = phi / Math.PI;            // [0, 1]: 0=NEW, 1=FULL
+
+        // 盈亏方向：obsToMoon × obsToSun 与轨道法线的点积
+        // 轨道法线由轨道倾角 i 和升交点经度 Ω 决定
+        double i     = target.orbit.inclination();
+        double Omega = target.orbit.longitudeOfAscendingNode();
+        Vector3f orbitNormal = new Vector3f(
+            (float) (Math.sin(Omega) * Math.sin(i)),
+            (float) (-Math.cos(Omega) * Math.sin(i)),
+            (float) Math.cos(i)
+        );
+        Vector3f cross = new Vector3f(obsToMoon).cross(obsToSun);
+        float side = cross.dot(orbitNormal);   // <0 = 盈(waxing), >0 = 亏(waning)
+
+        int idx;
+        if (side <= 0) {
+            // 亏月 waning (full→new): t: 1→0
+            // FULL(0) → GIBBOUS(1) → LAST_Q(2) → CRESCENT(3) → NEW(4)
+            idx = (int) Math.round((1 - t) * 4);
+        } else {
+            // 盈月 waxing (new→full): t: 0→1
+            // NEW(4) → CRESCENT(5) → FIRST_Q(6) → GIBBOUS(7) → FULL(0)
+            idx = (int) Math.round(t * 4 + 4) % 8;
+        }
+
+        return MoonPhase.values()[Math.min(idx, 7)];
     }
 
-    private void renderSun(float rainBrightness, PoseStack poseStack) {
+    private void renderSun(float size, float rainBrightness, PoseStack poseStack) {
         Matrix4fStack modelViewStack = RenderSystem.getModelViewStack();
         modelViewStack.pushMatrix();
         modelViewStack.mul(poseStack.last().pose());
         modelViewStack.translate(0.0F, 100.0F, 0.0F);
-        modelViewStack.scale(30.0F, 1.0F, 30.0F);
+        modelViewStack.scale(size, -1.0F, size);
         GpuBufferSlice dynamicTransforms = RenderSystem.getDynamicUniforms()
                 .writeTransform(modelViewStack, new Vector4f(1.0F, 1.0F, 1.0F, rainBrightness), new Vector3f(),
                         new Matrix4f());
@@ -577,13 +605,13 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         modelViewStack.popMatrix();
     }
 
-    private void renderMoon(MoonPhase moonPhase, float rainBrightness, PoseStack poseStack) {
+    private void renderMoon(MoonPhase moonPhase, float size, float rainBrightness, PoseStack poseStack) {
         int baseVertex = moonPhase.index() * 4;
         Matrix4fStack modelViewStack = RenderSystem.getModelViewStack();
         modelViewStack.pushMatrix();
         modelViewStack.mul(poseStack.last().pose());
         modelViewStack.translate(0.0F, 100.0F, 0.0F);
-        modelViewStack.scale(20.0F, 1.0F, 20.0F);
+        modelViewStack.scale(size, -1.0F, size);
         GpuBufferSlice dynamicTransforms = RenderSystem.getDynamicUniforms()
                 .writeTransform(modelViewStack, new Vector4f(1.0F, 1.0F, 1.0F, rainBrightness), new Vector3f(),
                         new Matrix4f());
