@@ -1,4 +1,4 @@
-package git.frozenstream.readstar.datagen;
+package git.frozenstream.readstar.sprite;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;

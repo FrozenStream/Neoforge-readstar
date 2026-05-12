@@ -1,9 +1,5 @@
 package git.frozenstream.readstar.elements;
 
-import net.minecraft.network.FriendlyByteBuf;
-import net.minecraft.network.RegistryFriendlyByteBuf;
-import net.minecraft.network.codec.ByteBufCodecs;
-import net.minecraft.network.codec.StreamCodec;
 import org.joml.Vector3f;
 import org.joml.Vector3fc;
 

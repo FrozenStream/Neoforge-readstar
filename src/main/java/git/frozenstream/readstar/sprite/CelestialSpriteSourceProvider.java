@@ -1,4 +1,4 @@
-package git.frozenstream.readstar.datagen;
+package git.frozenstream.readstar.sprite;
 
 import git.frozenstream.readstar.ReadStar;
 import git.frozenstream.readstar.ReadStarClient;

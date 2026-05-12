@@ -3,6 +3,7 @@ package git.frozenstream.readstar.skybox;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.*;
 import git.frozenstream.readstar.ReadStar;
+import git.frozenstream.readstar.elements.CelestialBody;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.SkyRenderer;
 import net.minecraft.client.renderer.state.level.LevelRenderState;
@@ -14,6 +15,7 @@ import net.minecraft.world.level.dimension.DimensionType;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.neoforge.client.CustomSkyboxRenderer;
 import org.joml.Matrix4fc;
+import org.joml.Vector3f;
 
 
 public class ReadstarSkyboxRenderer implements CustomSkyboxRenderer, ResourceManagerReloadListener {
@@ -44,14 +46,19 @@ public class ReadstarSkyboxRenderer implements CustomSkyboxRenderer, ResourceMan
             PoseStack poseStack = new PoseStack();
             skyRenderer.renderSkyDisc(state.skyColor);
             skyRenderer.renderSunriseAndSunset(poseStack, state.sunAngle, state.sunriseAndSunsetColor);
-            skyRenderer.renderSunMoonAndStars(
-                    poseStack, state.sunAngle, state.moonAngle, state.starAngle, state.moonPhase, state.rainBrightness, state.starBrightness
-            );
+            skyRenderer.renderSunMoonAndStars(poseStack, state.rainBrightness, state.starBrightness);
             if (state.shouldRenderDarkDisc) {
                 skyRenderer.renderDarkDisc();
             }
         }
         
         return true;
+    }
+
+
+    public void updateObserver(CelestialBody body,long daylightTime){
+        ReadstarSkyRenderer.Observer = body;
+        body.updateCurrentVec(daylightTime);
+        ReadStar.LOGGER.debug("Observer: {}", ReadstarSkyRenderer.Observer.currentRotationVector);
     }
 }

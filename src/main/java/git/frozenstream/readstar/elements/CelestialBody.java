@@ -2,6 +2,8 @@ package git.frozenstream.readstar.elements;
 
 import org.joml.Vector3f;
 
+import git.frozenstream.readstar.ReadStar;
+
 import java.util.ArrayList;
 
 /**
@@ -101,6 +103,8 @@ public class CelestialBody {
         this.radius = radius;
         this.luminance = luminance;
         this.position = new Vector3f();
+        this.currentRotationVector = new Vector3f();
+        this.noonRotationVector = new Vector3f();
         this.rotationAxis = rotationAxis;
         this.orbit = orbit;
         this.parent = null;
@@ -117,5 +121,62 @@ public class CelestialBody {
         if (rotationAxis == null) rotationAxis = new Vector3f(0, 0, -1);
         if (rotationAxis.lengthSquared() == 0f) rotationAxis.set(0, 0, -1);
         return rotationAxis;
+    }
+
+    /**
+     * 递归更新自身及所有子体的位置。
+     * 位置 = 父体位置 + 轨道偏移，Root 固定于原点。
+     */
+    public void updatePosition(long t) {
+        if (this == Root) {
+            this.position.set(0, 0, 0);
+        } else {
+            if (this.mass == 0) {
+                this.position.set(0, 0, 0);
+            } else {
+                this.position.set(this.parent.position).add(this.orbit.calPosition(this.parent.mass, t));
+            }
+            updateNoonVec();
+        }
+        // ReadStar.LOGGER.debug("[CelestialBody] updatePosition: {} {}", this.name, this.position);
+        this.children.forEach(child -> child.updatePosition(t));
+    }
+
+    /** 更新正午朝向向量（基于 hostStar 位置） */
+    public void updateNoonVec() {
+        if (this == Root || this.hostStar == null) return;
+        // toStar = hostStar.position - this.position，复用 noonRotationVector 免分配
+        this.noonRotationVector.set(this.hostStar.position).sub(this.position);
+        Vector3f axis = getRotationAxis();
+        float dot = axis.dot(this.noonRotationVector);
+        // Gram-Schmidt: 减去沿自转轴的分量 → 保留赤道面内的投影
+        this.noonRotationVector.sub(axis.x * dot, axis.y * dot, axis.z * dot);
+        // 极地盛夏：恒星接近天顶/天底，水平分量近乎为零 → 任选一个水平方向
+        if (this.noonRotationVector.lengthSquared() < 0.0001f) {
+            this.noonRotationVector.set(-1, 0, 0);
+        } else {
+            this.noonRotationVector.normalize();
+        }
+    }
+
+    /**
+     * 根据维度日周期时间更新当前天顶方向向量。
+     * currentRotationVector = noonRotationVector 绕 rotationAxis 旋转 -θ
+     * 其中 θ = (t - 6000) × π / 12000，t 为 0~24000 的维度日光时间
+     */
+    public void updateCurrentVec(long daylightTick) {
+        float theta = (daylightTick - 6000) * (float) Math.PI / 12000;
+        Vector3f axis = getRotationAxis();
+        this.currentRotationVector.set(this.noonRotationVector).rotateAxis(-theta, axis.x, axis.y, axis.z);
+    }
+
+    /**
+     * 向上查找最近的发光祖先天体（hostStar）。
+     * 如果自身发光则返回自己，否则递归查 parent。
+     */
+    public static CelestialBody findLuminousAncestor(CelestialBody body) {
+        if (body == null || body == Root) return null;
+        if (body.luminance > 0) return body;
+        return findLuminousAncestor(body.parent);
     }
 }

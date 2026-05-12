@@ -51,6 +51,14 @@ public class CelestialBodyManager {
     public ArrayList<CelestialBody> getCelestialBodyTreeMap() {
         return new ArrayList<>(celestialBodyTreeMap.values());
     }
+    /**
+     * 判断有无指定名称的天体
+     * @param name 天体名称
+     * @return 是否有指定名称的天体
+     */
+    public boolean hasCelestialBody(String name) {
+        return celestialBodyTreeMap.containsKey(name);
+    }
 
     /**
      * 获取天体数量
@@ -62,92 +70,14 @@ public class CelestialBodyManager {
     }
 
 
-
     /**
-     * 递归更新所有天体位置
+     * 递归更新所有天体位置，委托给 CelestialBody.updatePosition(t)。
      * @param t 世界时间
      */
     public void updatePositions(long t) {
-        if(Root.position == null)Root.position = new Vector3f(0,0,0);
-        Root.children.forEach(child -> updatePositions(child, t));
-    }
-
-    private void updatePositions(CelestialBody celestialBody, long t) {
-        if(celestialBody.position == null) celestialBody.position = new Vector3f();
-        if(celestialBody.mass == 0) celestialBody.position.set(0, 0, 0);
-
-        celestialBody.position.set(celestialBody.parent.position).add(celestialBody.orbit.calPosition(celestialBody.parent.mass, t));
-        updateNoonVec(celestialBody);
-        celestialBody.children.forEach(child -> updatePositions(child, t));
-    }
-
-
-    public CelestialBody whichIsYourSun(CelestialBody celestialBody) {
-        if (celestialBody == Root) throw new RuntimeException("CelestialBodyManager: Root have no sun.");
-        
-        // 如果当前天体本身就是发光的，返回它自己
-        if (celestialBody.luminance > 0) return celestialBody;
-        
-        // 直接返回预计算的 hostStar（在 initializeFromJson 中已更新）
-        if (celestialBody.hostStar == null) {
-            ReadStar.LOGGER.warn("CelestialBodyManager: hostStar not initialized for celestialBody '{}', recalculating...", celestialBody.name);
-            celestialBody.hostStar = findLuminousAncestor(celestialBody.parent);
-        }
-        
-        return celestialBody.hostStar;
+        Root.children.forEach(child -> child.updatePosition(t));
     }
     
-    /**
-     * 递归查找第一个发光的祖先天体
-     * @param celestialBody 当前天体
-     * @return 发光的祖先天体，如果未找到则返回 null
-     */
-    private CelestialBody findLuminousAncestor(CelestialBody celestialBody) {
-        if (celestialBody == null || celestialBody == Root) {
-            return null;
-        }
-        
-        // 如果这个天体发光，返回它
-        if (celestialBody.luminance > 0) {
-            return celestialBody;
-        }
-        
-        // 否则继续向上查找
-        return findLuminousAncestor(celestialBody.parent);
-    }
-
-
-    /**
-     * 更新天体正午朝向向量
-     * @param celestialBody 天体
-     */
-    public void updateNoonVec(CelestialBody celestialBody) {
-        if (celestialBody == Root) return;
-        if (celestialBody.noonRotationVector == null) celestialBody.noonRotationVector = new Vector3f();   //若为空，则创建向量
-        CelestialBody parent = whichIsYourSun(celestialBody);
-        Vector3f parent_vec = (new Vector3f()).set(parent.position).sub(celestialBody.position);    //获得父级向量
-        Vector3f tmp = (new Vector3f()).set(celestialBody.getRotationAxis());   //构建 @parent_vec 平行于 @celestialBody.axis 的向量分量
-        float n = celestialBody.getRotationAxis().dot(parent_vec);
-        tmp.mul(n);
-        celestialBody.noonRotationVector.set(parent_vec).sub(tmp).normalize();   //减去平行于 @celestialBody.axis 的分量，获得垂直于 @celestialBody.axis 向量分量
-        if (celestialBody.noonRotationVector.lengthSquared() < 0.01f) celestialBody.noonRotationVector.set(-1, 0, 0);
-    }
-
-
-    /**
-     * 更新天体当前朝向向量
-     * @param celestialBody 天体
-     * @return 当前朝向向量
-     * */
-    public Vector3f updateCurrentSkyVec(CelestialBody celestialBody, long tick) {
-        if (celestialBody.currentRotationVector == null) celestialBody.currentRotationVector = new Vector3f();
-        float theta = (tick - 6000) * (float)Math.PI / 12000;
-        Vector3f axis = celestialBody.getRotationAxis();
-        celestialBody.currentRotationVector.set(celestialBody.noonRotationVector).rotateAxis(-theta, axis.x, axis.y, axis.z);
-
-        return new Vector3f(celestialBody.currentRotationVector);
-    }
-
 
     /**
      * 获取目标天体在观察者视野中的亮面
@@ -156,8 +86,7 @@ public class CelestialBodyManager {
      * @return 亮面类型ID
      */
     public int getLightPhase(Vector3f observer, CelestialBody target){
-        CelestialBody sun = whichIsYourSun(target);
-        Vector3f tar_sun = (new Vector3f()).set(sun.position).sub(target.position).normalize();
+        Vector3f tar_sun = (new Vector3f()).set(target.hostStar.position).sub(target.position).normalize();
         Vector3f tar_obs = (new Vector3f()).set(observer).sub(target.position).normalize();
         float dot = tar_sun.dot(tar_obs);
         double theta = Math.acos(dot) / Math.PI;
@@ -183,8 +112,7 @@ public class CelestialBodyManager {
      * @return 目标被遮蔽导致的不透明度值
      */
     public float getCoveredBySun(Vector3f observer, CelestialBody target) {
-        CelestialBody sun = whichIsYourSun(target);
-        Vector3f obs_sun = (new Vector3f()).set(sun.position).sub(observer).normalize();
+        Vector3f obs_sun = (new Vector3f()).set(target.hostStar.position).sub(observer).normalize();
         Vector3f obs_tar = (new Vector3f()).set(target.position).sub(observer).normalize();
         return Mth.clamp(1 - obs_sun.dot(obs_tar),0.5f, 1f);
     }
@@ -222,6 +150,10 @@ public class CelestialBodyManager {
                 parseAndAddCelestialBody(entry.getKey(), entry.getValue().getAsJsonObject(), null);
             }
 
+            celestialBodyTreeMap.forEach((name, celestialBody) -> {
+                ReadStar.LOGGER.info("CelestialBodyManager: CelestialBody '{}' hoststar: {}", name, celestialBody.hostStar.name);
+            });
+
             ReadStar.LOGGER.info("CelestialBodyManager: Successfully initialized {} celestial bodies from JSON", celestialBodyTreeMap.size());
         } catch (Exception e) {
             ReadStar.LOGGER.error("CelestialBodyManager: Failed to initialize celestial body system from JSON", e);
@@ -236,6 +168,7 @@ public class CelestialBodyManager {
      */
     private void parseAndAddCelestialBody(String name, JsonObject celestialBodyData, CelestialBody parent) {
         try {
+            name = name.toLowerCase();
             // ========== 1. 解析天体属性 ==========
             double mass = celestialBodyData.get(KEY_MASS).getAsDouble();
             double radius = celestialBodyData.get(KEY_RADIUS).getAsDouble();
@@ -263,6 +196,8 @@ public class CelestialBodyManager {
             if (!celestialBody.parent.children.contains(celestialBody)) {
                 celestialBody.parent.children.add(celestialBody);
             }
+
+            celestialBody.hostStar = CelestialBody.findLuminousAncestor(celestialBody);
             
             // ========== 5. 递归处理子天体 ==========
             JsonObject childrenData = celestialBodyData.getAsJsonObject(KEY_CHILDREN);
