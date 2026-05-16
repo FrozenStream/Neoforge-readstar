@@ -5,6 +5,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.mojang.blaze3d.buffers.GpuBuffer;
 import com.mojang.blaze3d.buffers.GpuBufferSlice;
+import com.mojang.blaze3d.pipeline.RenderPipeline;
 import com.mojang.blaze3d.systems.RenderPass;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.textures.GpuTextureView;
@@ -14,6 +15,8 @@ import git.frozenstream.readstar.ReadStar;
 import git.frozenstream.readstar.ReadStarClient;
 import git.frozenstream.readstar.elements.CelestialBody;
 import git.frozenstream.readstar.elements.CelestialBodyManager;
+import git.frozenstream.readstar.elements.Meteor;
+import git.frozenstream.readstar.elements.MeteorCollector;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
@@ -661,6 +664,91 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         }
 
         return MoonPhase.values()[Math.min(idx, 7)];
+    }
+
+    /**
+     * 渲染所有活跃流星：头部 billboard 方块 + 尾迹矩形
+     * 使用 STARS 管线绘制，不需外部贴图
+     */
+    public void buildAndRenderMeteors(long gameTime, PoseStack poseStack) {
+        var meteors = MeteorCollector.getInstance().activeMeteors;
+        if (meteors.isEmpty()) return;
+
+        // 只统计已到达起始时间的流星（未到达时跳过，避免负 elapsed 导致错误位置）
+        int renderCount = 0;
+        for (Meteor meteor : meteors) {
+            if (gameTime >= meteor.startTick()) renderCount++;
+        }
+        if (renderCount == 0) return;
+
+        VertexFormat format = DefaultVertexFormat.POSITION;
+        int vtxSize = format.getVertexSize();
+
+        // 每颗流星：头部 4 顶点 + 尾迹 4 顶点 = 8 顶点
+        int totalQuads = renderCount * 2;
+        int totalVertices = totalQuads * 4;
+        int totalIndices = totalQuads * 6;
+
+        try (var buf = ByteBufferBuilder.exactlySized(vtxSize * totalVertices)) {
+            BufferBuilder builder = new BufferBuilder(buf, VertexFormat.Mode.QUADS, format);
+
+            for (Meteor meteor : meteors) {
+                if (gameTime < meteor.startTick()) continue; // 起始时间未到，跳过
+                long elapsed = gameTime - meteor.startTick();
+                Vector3f currentPos = meteor.getPositionAtTime(elapsed);
+
+                float starDist = 100.0F;
+
+                Vector3f center = new Vector3f(currentPos).normalize(starDist);
+                Vector3f trailDir = new Vector3f(meteor.startPosition()).sub(meteor.endPosition()).normalize();
+                Vector3f sideDir = new Vector3f(trailDir).cross(currentPos).normalize();
+
+                float headSize = 0.15f;
+
+                builder.addVertex(new Vector3f().add(trailDir).sub(sideDir).mul(headSize).add(center));
+                builder.addVertex(new Vector3f().add(trailDir).add(sideDir).mul(headSize).add(center));
+                builder.addVertex(new Vector3f().sub(trailDir).add(sideDir).mul(headSize).add(center));
+                builder.addVertex(new Vector3f().sub(trailDir).sub(sideDir).mul(headSize).add(center));
+                // ===== 尾迹：沿轨迹方向的矩形 =====
+                Vector3f trail = new Vector3f(currentPos).lerp(meteor.startPosition(), 0.4f).normalize(starDist);
+                
+                float halfWid = 0.05f;
+                Vector3f sOff = sideDir.mul(halfWid);
+                
+                builder.addVertex(new Vector3f(trail).sub(sOff));
+                builder.addVertex(new Vector3f(trail).add(sOff));
+                builder.addVertex(new Vector3f(center).add(sOff));
+                builder.addVertex(new Vector3f(center).sub(sOff));
+            }
+
+            try (MeshData mesh = builder.buildOrThrow()) {
+                try (GpuBuffer buffer = RenderSystem.getDevice().createBuffer(() -> "Meteors", 32, mesh.vertexBuffer())) {
+
+                    Matrix4fStack modelViewStack = RenderSystem.getModelViewStack();
+                    modelViewStack.pushMatrix();
+                    modelViewStack.mul(poseStack.last().pose());
+                    RenderPipeline renderPipeline = RenderPipelines.STARS;
+                    GpuTextureView colorTexture = Minecraft.getInstance().getMainRenderTarget().getColorTextureView();
+                    GpuTextureView depthTexture = Minecraft.getInstance().getMainRenderTarget().getDepthTextureView();
+                    GpuBuffer indexBuffer = this.quadIndices.getBuffer(totalIndices);
+                    GpuBufferSlice dynamicTransforms = RenderSystem.getDynamicUniforms()
+                        .writeTransform(modelViewStack, new Vector4f(0.6f, 0.6f, 0.01f, 1.0f), new Vector3f(), new Matrix4f());
+
+                    try (RenderPass renderPass = RenderSystem.getDevice()
+                            .createCommandEncoder()
+                            .createRenderPass(() -> "Meteors", colorTexture, OptionalInt.empty(), depthTexture, OptionalDouble.empty())) {
+                        renderPass.setPipeline(renderPipeline);
+                        RenderSystem.bindDefaultUniforms(renderPass);
+                        renderPass.setUniform("DynamicTransforms", dynamicTransforms);
+                        renderPass.setVertexBuffer(0, buffer);
+                        renderPass.setIndexBuffer(indexBuffer, this.quadIndices.type());
+                        renderPass.drawIndexed(0, 0, totalIndices, 1);
+                    }
+
+                    modelViewStack.popMatrix();
+                }
+            }
+        }
     }
 
     private void renderSun(float size, float rainBrightness, PoseStack poseStack) {

@@ -20,6 +20,7 @@ import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.server.ServerStartingEvent;
 
+import git.frozenstream.readstar.network.MeteorLauncher;
 import git.frozenstream.readstar.network.NetworkHelper;
 import git.frozenstream.readstar.network.CelestialReloader;
 import git.frozenstream.readstar.network.CelestialSystemPayload;
@@ -75,6 +76,9 @@ public class ReadStar {
         // Note that this is necessary if and only if we want *this* class (ReadStar) to respond directly to events.
         // Do not add this line if there are no @SubscribeEvent-annotated functions in this class, like onServerStarting() below.
         NeoForge.EVENT_BUS.register(this);
+
+        // 注册服务端流星发射器
+        NeoForge.EVENT_BUS.register(new MeteorLauncher());
 
         // // Register the item to semiMajorAxis creative tab
         // modEventBus.addListener(this::addCreative);

@@ -38,7 +38,7 @@ public record CelestialSystemPayload(String jsonData) implements CustomPacketPay
     public void handle(IPayloadContext context) {
         context.enqueueWork(() -> {
             try {
-                ReadStar.LOGGER.info("PlanetSystemPayload: Received planet system data from server");
+                ReadStar.LOGGER.info("CelestialSystemPayload: Received planet system data from server");
                 
                 // 解析 JSON 字符串为 JsonObject
                 JsonObject jsonObject = GSON.fromJson(jsonData, JsonObject.class);
@@ -46,12 +46,12 @@ public record CelestialSystemPayload(String jsonData) implements CustomPacketPay
                 // 调用 PlanetManager 单例进行初始化
                 CelestialBodyManager.getInstance().initializeFromJson(jsonObject);
                 
-                ReadStar.LOGGER.info("PlanetSystemPayload: Successfully initialized planet system on client");
+                ReadStar.LOGGER.info("CelestialSystemPayload: Successfully initialized planet system on client");
             } catch (Exception e) {
-                ReadStar.LOGGER.error("PlanetSystemPayload: Failed to process planet system data", e);
+                ReadStar.LOGGER.error("CelestialSystemPayload: Failed to process planet system data", e);
             }
         }).exceptionally(e -> {
-            ReadStar.LOGGER.error("处理行星系统数据包时出错", e);
+            ReadStar.LOGGER.error("CelestialSystemPayload: Failed!", e);
             return null;
         });
     }

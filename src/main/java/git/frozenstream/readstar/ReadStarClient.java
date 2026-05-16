@@ -8,6 +8,7 @@ import com.mojang.blaze3d.vertex.VertexFormat.Mode;
 
 import git.frozenstream.readstar.elements.CelestialBodyManager;
 import git.frozenstream.readstar.elements.CelestialBody;
+import git.frozenstream.readstar.elements.MeteorCollector;
 import git.frozenstream.readstar.skybox.ReadStarCloudsRenderer;
 import git.frozenstream.readstar.skybox.ReadstarSkyboxRenderer;
 import git.frozenstream.readstar.sprite.CelestialSpriteSourceProvider;
@@ -101,7 +102,9 @@ public class ReadStarClient {
         long gameTime = event.getLevel().getGameTime();
         long daylightTime = event.getLevel().getDefaultClockTime();
 
-        CelestialBodyManager.getInstance().updatePositions(20*gameTime);
+        CelestialBodyManager.getInstance().updatePositions(20 * gameTime);
+
+        MeteorCollector.getInstance().tick(gameTime);
 
         if (event.getLevel().dimension() == Level.OVERWORLD) {
             if (CelestialBodyManager.getInstance().hasCelestialBody("earth")) {

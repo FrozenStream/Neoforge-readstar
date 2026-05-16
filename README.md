@@ -14,14 +14,120 @@
 
 # 运行客户端
 ./gradlew runClient
-
-# 数据生成（图集配置）
-./gradlew runData
 ```
 
 模组加载后，通过**数据包** `data/readstar/celestial/system.json` 定义天体系统，通过**资源包** `assets/readstar/custom/stars/stars.json` 定义恒星目录。
 
 修改配置文件后需重新构建，或 F3+T 重载资源包（仅资源包内容有效，数据包需重启或 `/reload`）。
+
+---
+
+## 添加自定义月亮贴图
+
+ReadStar 的核心亮点之一：**为任意天体添加带 8 种月相的自定义纹理，只需放置 PNG 文件，无需修改任何 Java 代码**。
+
+### 一、准备工作目录
+
+在你的资源包（或模组 JAR）中创建以下目录结构：
+
+```
+assets/<命名空间>/textures/environment/celestial/moons/<天体名称>/
+```
+
+- `<命名空间>`: 你的 mod ID，如 `readstar`、`mymod` 或 `minecraft`。可任选，不会影响渲染。
+- `<天体名称>`: **必须与 `system.json` 中定义的天体名称完全一致（小写）**。例如你在数据包中定义了一个 `"Jupiter"`，则目录名应为 `jupiter`。
+
+### 二、准备 8 张月相贴图
+
+每个天体目录下需要放置 **恰好 8 张 PNG**，文件名对应月相枚举 `MoonPhase` 的固定值：
+
+| 文件名 | 月相 | 说明 |
+|--------|------|------|
+| `full_moon.png` | 满月 | 整个面被照亮 |
+| `waning_gibbous.png` | 亏凸月 | 满月后逐渐变暗 |
+| `third_quarter.png` | 下弦月 | 左半亮 |
+| `waning_crescent.png` | 残月 | 新月前夕 |
+| `new_moon.png` | 新月 | 背光面 |
+| `waxing_crescent.png` | 蛾眉月 | 新月后初现 |
+| `first_quarter.png` | 上弦月 | 右半亮 |
+| `waxing_gibbous.png` | 盈凸月 | 逐渐接近满月 |
+
+> 8 张图**缺一不可**，缺失的文件会导致渲染时对应的月相显示为紫黑贴图。月相的名称顺序来自 Minecraft 原版 `MoonPhase` 枚举，不可更改。
+
+### 三、贴图要求
+
+| 规格 | 要求 |
+|------|------|
+| 格式 | PNG（RGBA 32-bit，不支持 8-bit 灰度） |
+| 尺寸 | 建议 16×16 或 32×32（最终在图集中被拼接，过大尺寸无意义） |
+| 边缘 | 贴图外的区域应为透明（alpha=0），以便月相圆盘形状正确渲染 |
+| 着色 | 贴图本身应包含颜色信息（非纯白底模），渲染时不会额外染色 |
+
+### 四、完整示例
+
+假设你想添加木星（Jupiter）作为可观测天体，需要做两件事：
+
+#### 步骤 1：在 `system.json` 定义天体轨道
+
+```json
+{
+  "System": {
+    "Sun": { "...": "..." },
+    "Jupiter": {
+      "mass": 1.898e27,
+      "radius": 6.991e7,
+      "luminance": 0,
+      "axis": [0.0, 0.0, 0.0],
+      "orbit": { "semiMajorAxis": 7.785e11, "eccentricity": 0.0484, "inclination": 0.0228, "argumentOfPeriapsis": 0.0, "longitudeOfAscendingNode": 1.754, "initialMeanAnomaly": 0.0 },
+      "children": {}
+    }
+  }
+}
+```
+
+#### 步骤 2：放置 8 张月相贴图
+
+```
+assets/readstar/textures/environment/celestial/moons/jupiter/
+├── full_moon.png
+├── waning_gibbous.png
+├── third_quarter.png
+├── waning_crescent.png
+├── new_moon.png
+├── waxing_crescent.png
+├── first_quarter.png
+└── waxing_gibbous.png
+```
+
+#### 原理
+
+1. **图集自动扫描**：`textures/environment/celestial/` 目录下的所有 `.png` 由 Minecraft 的图集系统自动发现并拼入 `celestial` 图集
+2. **渲染器自动发现**：`ReadstarSkyRenderer` 的构造函数通过 `ResourceManager.listResources()` 扫描 `moons/` 子目录，按子目录名自动分组构建 GPU 缓冲
+3. **运行时匹配**：每帧渲染时，遍历 `CelestialBodyManager` 中所有天体，通过 `body.name` 在缓冲映射表中查找对应纹理组，找到则自动渲染其月相
+
+全程**零配置、零代码**。
+
+### 为其他 Mod 的天体添加纹理
+
+如果你开发的是另一个 Mod，想给 `readstar` 的某个天体（如 Earth）替换纹理，只需在你的资源包中放置同名文件：
+
+```
+assets/yourmod/textures/environment/celestial/moons/earth/
+├── full_moon.png   ← 替换地球的满月贴图
+├── ...
+```
+
+Minecraft 资源包的优先级系统会自动决定哪个文件胜出（你的 mod 优先级高于 `readstar` 时，你的文件被使用）。
+
+### 贴图文件未生效？故障排查
+
+| 现象 | 检查点 |
+|------|--------|
+| 某个月相显示紫黑贴图 | 该月相对应的 `.png` 文件是否缺失；文件名是否拼写正确（严格小写） |
+| 所有月相都不显示 | 目录名是否与 `system.json` 中的天体名称小写一致？`moons/` 子目录名是否正确？ |
+| 天体未渲染 | 该天体是否有 `hostStar`（`system.json` 中该天体或其祖先的 `luminance > 0`）？ |
+| F3+T 后不更新 | 纹理修改属于资源包变更，F3+T 即可刷新；如果不行，重新构建 |
+| 贴图显示但方向不对 | ReadStar 的 UV 映射已与原版月相逻辑对齐，无需额外处理 |
 
 ---
 
@@ -143,6 +249,16 @@
 }
 ```
 
+### 添加太阳纹理
+
+太阳纹理不同于月相——它只有单张贴图。放在：
+
+```
+assets/<命名空间>/textures/environment/celestial/suns/<名称>.png
+```
+
+默认是 `readstar:textures/environment/celestial/suns/white_sun.png`。渲染器自动扫描 `suns/` 目录，但不参与月相计算，仅作为恒星的发光贴图渲染。
+
 ### 继承规则
 
 - `hostStar` 自动向上递归查找最近的自发光天体
@@ -225,7 +341,7 @@ daylightTime    → updateCurrentVec(t)   → 自转天顶更新
 
 ### 天体图集
 
-由数据生成器（`runData`）生成，位于 `src/generated/resources/assets/readstar/atlases/celestial.json`。添加新天体纹理需修改 `CelestialSpriteSourceProvider` 后重新生成。
+`assets/readstar/atlases/celestial.json` 使用 Minecraft 原生的 `minecraft:directory` 源类型，自动扫描所有命名空间下的 `textures/environment/celestial/` 目录。**无需额外配置，放文件即可**。
 
 ---
 
@@ -239,7 +355,6 @@ daylightTime    → updateCurrentVec(t)   → 自转天顶更新
 
 ```bash
 ./gradlew build          # 构建 mod JAR
-./gradlew runData        # 数据生成（图集配置）
 ./gradlew runClient      # 运行客户端
 ./gradlew runServer      # 运行服务端
 ```
@@ -253,7 +368,9 @@ daylightTime    → updateCurrentVec(t)   → 自转天顶更新
 | 星星显示紫黑贴图 | `star_base.png` 是否为 32-bit RGBA |
 | 数据包未生效 | `/reload` 或重启服务端 |
 | 资源包未更新 | F3+T 重载资源包，或重新构建 |
+| 天体未显示 | 该天体在 `system.json` 中是否有 `hostStar`（自身或祖先 luminance>0）？ |
+| 月相总是新月 | 检查 8 个 PNG 文件名是否完全匹配，包括下划线 |
 
 ---
 
-© 2026 FrozenStream DeepSeek-V4-Flash. 基于 NeoForge 构建，遵循 MIT 许可证。
+© 2026 FrozenStream. 基于 NeoForge 构建，遵循 MIT 许可证。

@@ -39,6 +39,13 @@ public class ReadStarNetwork {
                 CelestialSystemPayload::handle
         );
 
+        // 注册流星数据包
+        registrar.playToClient(
+                MeteorPayload.TYPE,
+                MeteorPayload.STREAM_CODEC,
+                MeteorPayload::handle
+        );
+
         ReadStar.LOGGER.info("已注册 ReadStar 网络包处理器");
     }
 }
