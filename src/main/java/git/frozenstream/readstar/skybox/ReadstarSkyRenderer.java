@@ -11,6 +11,7 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.textures.GpuTextureView;
 import com.mojang.blaze3d.vertex.*;
 import com.mojang.math.Axis;
+import git.frozenstream.readstar.Config;
 import git.frozenstream.readstar.ReadStar;
 import git.frozenstream.readstar.ReadStarClient;
 import git.frozenstream.readstar.elements.CelestialBody;
@@ -306,8 +307,8 @@ public class ReadstarSkyRenderer implements AutoCloseable {
             }
         }
 
-        var coreSize = 0.648f;
-        var glowSIze = 1.5f;
+        var coreSize = Config.STAR_CORE_SIZE.get().floatValue();
+        var glowSIze = Config.STAR_GLOW_SIZE.get().floatValue();
 
         try (ByteBufferBuilder buf = ByteBufferBuilder.exactlySized(vtxSize * totalVertices)) {
             BufferBuilder builder = new BufferBuilder(buf, VertexFormat.Mode.QUADS, format);
@@ -670,7 +671,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
      * 渲染所有活跃流星：头部 billboard 方块 + 尾迹矩形
      * 使用 STARS 管线绘制，不需外部贴图
      */
-    public void buildAndRenderMeteors(long gameTime, PoseStack poseStack) {
+    public void buildAndRenderMeteors(PoseStack poseStack, float starBrightness, long gameTime) {
         var meteors = MeteorCollector.getInstance().activeMeteors;
         if (meteors.isEmpty()) return;
 
@@ -694,8 +695,8 @@ public class ReadstarSkyRenderer implements AutoCloseable {
 
             for (Meteor meteor : meteors) {
                 if (gameTime < meteor.startTick()) continue; // 起始时间未到，跳过
-                long elapsed = gameTime - meteor.startTick();
-                Vector3f currentPos = meteor.getPositionAtTime(elapsed);
+                float progress = meteor.getCurrentProgress(gameTime);
+                Vector3f currentPos = new Vector3f(meteor.startPosition()).lerp(meteor.endPosition(), progress);
 
                 float starDist = 100.0F;
 
@@ -710,7 +711,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
                 builder.addVertex(new Vector3f().sub(trailDir).add(sideDir).mul(headSize).add(center));
                 builder.addVertex(new Vector3f().sub(trailDir).sub(sideDir).mul(headSize).add(center));
                 // ===== 尾迹：沿轨迹方向的矩形 =====
-                Vector3f trail = new Vector3f(currentPos).lerp(meteor.startPosition(), 0.4f).normalize(starDist);
+                Vector3f trail = new Vector3f(currentPos).lerp(meteor.startPosition(), progress*(1-progress)).normalize(starDist);
                 
                 float halfWid = 0.05f;
                 Vector3f sOff = sideDir.mul(halfWid);
@@ -732,7 +733,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
                     GpuTextureView depthTexture = Minecraft.getInstance().getMainRenderTarget().getDepthTextureView();
                     GpuBuffer indexBuffer = this.quadIndices.getBuffer(totalIndices);
                     GpuBufferSlice dynamicTransforms = RenderSystem.getDynamicUniforms()
-                        .writeTransform(modelViewStack, new Vector4f(0.6f, 0.6f, 0.01f, 1.0f), new Vector3f(), new Matrix4f());
+                        .writeTransform(modelViewStack, new Vector4f(0.6f, 0.6f, 0.01f, starBrightness), new Vector3f(), new Matrix4f());
 
                     try (RenderPass renderPass = RenderSystem.getDevice()
                             .createCommandEncoder()

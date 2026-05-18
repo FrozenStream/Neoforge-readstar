@@ -3,6 +3,7 @@ package git.frozenstream.readstar.elements;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import git.frozenstream.readstar.Config;
 import git.frozenstream.readstar.ReadStar;
 import net.minecraft.util.Mth;
 import org.joml.Vector3f;
@@ -87,7 +88,9 @@ public class CelestialBodyManager {
     public float getApparentSize(Vector3f observer, CelestialBody target) {
         float distance = observer.distance(target.position);
         float k = (float) (target.radius / distance);
-        return Math.max(1.024f, k * 4e3f);
+        float factor = Config.CELESTIAL_APPARENT_SIZE_FACTOR.get().floatValue();
+        float minSize = Config.CELESTIAL_APPARENT_SIZE_MIN.get().floatValue();
+        return Math.max(minSize, k * factor);
     }
 
     /**

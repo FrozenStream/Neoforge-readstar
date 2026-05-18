@@ -41,7 +41,8 @@ public class ReadstarSkyboxRenderer implements CustomSkyboxRenderer, ResourceMan
             skyRenderer.renderSkyDisc(state.skyColor);
             skyRenderer.renderSunriseAndSunset(poseStack, state.sunAngle, state.sunriseAndSunsetColor);
             skyRenderer.renderSunMoonAndStars(poseStack, state.rainBrightness, state.starBrightness);
-            skyRenderer.buildAndRenderMeteors(levelRenderState.gameTime, poseStack);// ===== METEORS (在 frameQuat 框架内渲染) =====
+            // ===== METEORS (在 frameQuat 框架内渲染) =====
+            skyRenderer.buildAndRenderMeteors(poseStack, state.starBrightness, levelRenderState.gameTime);
             if (state.shouldRenderDarkDisc) {
                 skyRenderer.renderDarkDisc();
             }

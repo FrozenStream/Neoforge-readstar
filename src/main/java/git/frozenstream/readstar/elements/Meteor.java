@@ -112,14 +112,11 @@ public record Meteor(Vector3f startPosition, Vector3f endPosition, float speed, 
     /**
      * 根据经过的 tick 数插值计算流星当前位置
      *
-     * @param elapsedTicks 从 startTick 开始经过的 tick 数
+     * @param currentTick 从 startTick 开始经过的 tick 数
      * @return 当前位置
      */
-    public Vector3f getPositionAtTime(float elapsedTicks) {
-        float distance = speed * elapsedTicks;
-        float totalDistance = startPosition.distance(endPosition);
-        float progress = Math.min(distance / totalDistance, 1.0f);
-        return new Vector3f(startPosition).lerp(endPosition, progress);
+    public Vector3f getPositionAtTime(long currentTick) {
+        return new Vector3f(startPosition).lerp(endPosition, getCurrentProgress(currentTick));
     }
 
     /**
@@ -129,5 +126,11 @@ public record Meteor(Vector3f startPosition, Vector3f endPosition, float speed, 
         float totalDistance = startPosition.distance(endPosition);
         if (speed <= 0f || totalDistance <= 0f) return 0f;
         return totalDistance / speed;
+    }
+
+    public float getCurrentProgress(long currentTick) {
+        float duration = getDuration();
+        if (duration <= 0f) return 0f;
+        return Math.min((currentTick - startTick) / duration, 1.0f);
     }
 }

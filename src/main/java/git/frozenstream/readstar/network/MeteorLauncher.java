@@ -2,6 +2,7 @@ package git.frozenstream.readstar.network;
 
 import git.frozenstream.readstar.elements.Meteor;
 import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.neoforge.event.tick.LevelTickEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
 import net.neoforged.neoforge.network.PacketDistributor;
 import org.joml.Vector3f;
@@ -20,22 +21,21 @@ public class MeteorLauncher {
     private static final int DELAY_TICKS = 40;
 
     /** 流星速度范围（m/tick） */
-    private static final float MIN_SPEED = 50f;
-    private static final float MAX_SPEED = 100f;
+    private static final float MIN_SPEED = 40f;
+    private static final float MAX_SPEED = 60f;
 
     /** 流星轨迹长度范围（m） */
     private static final float MIN_DISTANCE = 200f;
-    private static final float MAX_DISTANCE = 500f;
+    private static final float MAX_DISTANCE = 400f;
 
     private long lastSpawnTick = 0;
 
     @SubscribeEvent
-    public void onServerTick(ServerTickEvent.Post event) {
-        var server = event.getServer();
-        if (server == null)
+    public void onServerTick(LevelTickEvent.Post event) {
+        if (event.getLevel().isClientSide())
             return;
 
-        long gameTime = server.overworld().getGameTime();
+        long gameTime = event.getLevel().getGameTime();
 
         // 检查是否达到生成间隔
         if (gameTime - lastSpawnTick < SPAWN_INTERVAL)
