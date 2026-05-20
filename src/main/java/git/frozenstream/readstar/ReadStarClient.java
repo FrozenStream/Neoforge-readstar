@@ -51,22 +51,22 @@ public class ReadStarClient {
     /** 自定义管线：与 CELESTIAL 相同但使用 POSITION_TEX_COLOR（支持逐星亮度 via setColor） */
     public static RenderPipeline STAR_TEXTURED_PIPELINE;
 
-    @SubscribeEvent
-    static void onRegisterStarPipelines(RegisterRenderPipelinesEvent event) {
-        // 参照 END_SKY（用 core/position_tex_color + POSITION_TEX_COLOR），但 blend 改为
-        // OVERLAY（与 CELESTIAL 一致）
-        STAR_TEXTURED_PIPELINE = RenderPipeline
-                .builder(new RenderPipeline.Snippet[] { RenderPipelines.MATRICES_PROJECTION_SNIPPET })
-                .withLocation(Identifier.fromNamespaceAndPath(ReadStar.MODID, "star_textured"))
-                .withVertexShader("core/position_tex_color")
-                .withFragmentShader("core/position_tex_color")
-                .withSampler("Sampler0")
-                .withColorTargetState(new ColorTargetState(BlendFunction.OVERLAY))
-                .withVertexFormat(DefaultVertexFormat.POSITION_TEX_COLOR, Mode.QUADS)
-                .build();
-        event.registerPipeline(STAR_TEXTURED_PIPELINE);
-        ReadStar.LOGGER.info("Registered custom star pipeline: readstar:star_textured");
-    }
+   @SubscribeEvent
+   static void onRegisterStarPipelines(RegisterRenderPipelinesEvent event) {
+       // 参照 END_SKY（用 core/position_tex_color + POSITION_TEX_COLOR），但 blend 改为
+       // OVERLAY（与 CELESTIAL 一致）
+       STAR_TEXTURED_PIPELINE = RenderPipeline
+               .builder(new RenderPipeline.Snippet[] { RenderPipelines.MATRICES_PROJECTION_SNIPPET })
+               .withLocation(Identifier.fromNamespaceAndPath(ReadStar.MODID, "star_textured"))
+               .withVertexShader("core/position_tex_color")
+               .withFragmentShader("core/position_tex_color")
+               .withSampler("Sampler0")
+               .withColorTargetState(new ColorTargetState(BlendFunction.OVERLAY))
+               .withVertexFormat(DefaultVertexFormat.POSITION_TEX_COLOR, Mode.QUADS)
+               .build();
+       event.registerPipeline(STAR_TEXTURED_PIPELINE);
+       ReadStar.LOGGER.info("Registered custom star pipeline: readstar:star_textured");
+   }
 
     public ReadStarClient(ModContainer container) {
         // Allows NeoForge to create semiMajorAxis config screen for this mod's configs.
@@ -99,10 +99,23 @@ public class ReadStarClient {
 
     @SubscribeEvent
     static void onExtractLevelRenderState(ExtractLevelRenderStateEvent event) {
+        var starBrightness = event.getRenderState().skyRenderState.starBrightness;
+        starBrightness = Math.min(1.0f, starBrightness * 5.f);
+        var level = event.getLevel();
+        var BlockPos = event.getCamera().blockPosition();
+        var lighting = level.getMaxLocalRawBrightness(BlockPos);
+        starBrightness = starBrightness * (1 - lighting / 20.f);
+        var fov = event.getCamera().getFov();
+        starBrightness = starBrightness * Math.max(1.f, 2f - fov / 140.f);
+        event.getRenderState().skyRenderState.starBrightness = Math.min(1.f, starBrightness);
+
         long gameTime = event.getLevel().getGameTime();
         long daylightTime = event.getLevel().getDefaultClockTime();
 
         CelestialBodyManager.getInstance().updatePositions(20 * gameTime);
+
+        // 设置 Collector 的当前维度（维度变化时会自动清空旧数据）
+        MeteorCollector.getInstance().setCurrentDimension(level.dimension().identifier());
 
         MeteorCollector.getInstance().tick(gameTime);
 

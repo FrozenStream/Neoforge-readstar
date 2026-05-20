@@ -18,10 +18,18 @@ public record Meteor(Vector3f startPosition, Vector3f endPosition, float speed, 
     public static final float SHELL_INNER_RADIUS = 500.0f;
 
     /** 球壳厚度 */
-    public static final float SHELL_THICKNESS = 100.0f;
+    public static final float SHELL_THICKNESS = 50.0f;
 
     /** 球壳外径 */
     public static final float SHELL_OUTER_RADIUS = SHELL_INNER_RADIUS + SHELL_THICKNESS;
+
+    /** 默认流星速度范围（m/tick） */
+    public static final float DEFAULT_MIN_SPEED = 10f;
+    public static final float DEFAULT_MAX_SPEED = 20f;
+
+    /** 默认流星轨迹长度范围（m） */
+    public static final float DEFAULT_MIN_DISTANCE = 200f;
+    public static final float DEFAULT_MAX_DISTANCE = 400f;
 
     /**
      * 紧凑构造器，对 Vector3f 做防御性复制
@@ -105,6 +113,76 @@ public record Meteor(Vector3f startPosition, Vector3f endPosition, float speed, 
             }
         }
         return new Meteor(start, bestEnd, speed, startTick);
+    }
+
+    /**
+     * 根据 LaunchZone 创建一颗随机流星
+     * 起始位置受 azimuth 偏向（水平方向），终点在 direction 方向上
+     *
+     * @param zone        启动区域参数
+     * @param gameTime    当前游戏 tick（生成的流星 startTick = gameTime + 40）
+     * @param minSpeed    最小速度
+     * @param maxSpeed    最大速度
+     * @param minDistance 最小轨迹距离
+     * @param maxDistance 最大轨迹距离
+     * @return 流星实例
+     */
+    public static Meteor randomFromZone(LaunchZone zone, long gameTime,
+                                         float minSpeed, float maxSpeed,
+                                         float minDistance, float maxDistance) {
+        long startTick = gameTime + 40; // 2 秒延迟
+        float speed = minSpeed + (float) Math.random() * (maxSpeed - minSpeed);
+
+        // 起始位置：偏向 azimuth 方向
+        float azimuthRad = (float) Math.toRadians(zone.azimuth());
+        Vector3f start = randomPositionWithAzimuthBias(azimuthRad, SHELL_OUTER_RADIUS);
+
+        // 终点约束：距离在范围内 + 方向与 zone.direction 一致
+        for (int i = 0; i < MAX_RETRIES; i++) {
+            Vector3f end = randomPositionOnShell();
+            float dist = start.distance(end);
+            if (dist >= minDistance && dist <= maxDistance) {
+                Vector3f actualDir = new Vector3f(end).sub(start).normalize();
+                if (actualDir.dot(zone.direction()) > 0.3f) {
+                    return new Meteor(start, end, speed, startTick);
+                }
+            }
+        }
+
+        // 退化为标准随机
+        return random(minSpeed, maxSpeed, minDistance, maxDistance, startTick);
+    }
+
+    /**
+     * 在球壳外径上生成一个随机位置，水平方向偏向指定 azimuth
+     *
+     * @param azimuthRad 偏向的方位角（弧度）
+     * @param radius     球壳半径
+     */
+    private static Vector3f randomPositionWithAzimuthBias(float azimuthRad, float radius) {
+        Vector3f dir = new Vector3f(
+                (float) (Math.random() * 2 - 1),
+                (float) (Math.random() * 2 - 1),
+                (float) (Math.random() * 2 - 1)
+        );
+        while (dir.lengthSquared() < 1e-8f) {
+            dir.set(
+                    (float) (Math.random() * 2 - 1),
+                    (float) (Math.random() * 2 - 1),
+                    (float) (Math.random() * 2 - 1)
+            );
+        }
+        dir.normalize();
+
+        // 将水平分量（XZ）朝目标方位角混合 50%
+        float currentAzimuth = (float) Math.atan2(dir.z, dir.x);
+        float mixedAzimuth = currentAzimuth + (azimuthRad - currentAzimuth) * 0.5f;
+        float horizontalLen = (float) Math.sqrt(dir.x * dir.x + dir.z * dir.z);
+        dir.x = (float) (horizontalLen * (float) Math.cos(mixedAzimuth));
+        dir.z = (float) (horizontalLen * (float) Math.sin(mixedAzimuth));
+        dir.normalize();
+        dir.mul(radius);
+        return dir;
     }
 
     // ==================== 流星运动计算 ====================

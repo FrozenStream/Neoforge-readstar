@@ -5,6 +5,7 @@ import com.google.gson.JsonObject;
 import com.mojang.serialization.Codec;
 import com.mojang.serialization.JsonOps;
 import git.frozenstream.readstar.ReadStar;
+import git.frozenstream.readstar.elements.CelestialBodyManager;
 import net.minecraft.resources.FileToIdConverter;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.packs.resources.ResourceManager;
@@ -64,6 +65,9 @@ public class CelestialReloader extends SimpleJsonResourceReloadListener<JsonObje
         // 缓存数据，用于后续发送给新登录的玩家
         cachedPlanetData = jsonString;
         ReadStar.LOGGER.info("PlanetReloader: Cached planet system data");
+
+        // 初始化服务端的天体系统（与客户端共享同一份数据）
+        CelestialBodyManager.getInstance().initializeFromJson(jsonObject);
 
         // 尝试立即发送给所有在线玩家（如果服务器已就绪）
         var server = ServerLifecycleHooks.getCurrentServer();

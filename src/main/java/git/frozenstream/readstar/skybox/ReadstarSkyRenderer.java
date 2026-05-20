@@ -486,14 +486,6 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         }
     }
 
-    public void afterExtract(SkyRenderState state) {
-        // 三次函数快速入夜：sin(sunAngle) 在黄昏=0→午夜=1→黎明=0
-        // 乘以 3 倍系数使亮度在入夜后 ~23° 即达 1，ease-out cubic 平滑收敛
-        float raw = Math.max(0.0f, -Mth.cos(state.sunAngle));
-        float t = Math.min(1.0f, raw * 6.0f);
-        float cubic = 1.0f - (1.0f - t) * (1.0f - t) * (1.0f - t); // 1-(1-t)³
-        state.starBrightness = cubic * state.rainBrightness;
-    }
 
     private boolean shouldRenderDarkDisc(float deltaPartialTick, ClientLevel level) {
         return Minecraft.getInstance().player.getEyePosition(deltaPartialTick).y
@@ -704,7 +696,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
                 Vector3f trailDir = new Vector3f(meteor.startPosition()).sub(meteor.endPosition()).normalize();
                 Vector3f sideDir = new Vector3f(trailDir).cross(currentPos).normalize();
 
-                float headSize = 0.15f;
+                float headSize = 0.1f;
 
                 builder.addVertex(new Vector3f().add(trailDir).sub(sideDir).mul(headSize).add(center));
                 builder.addVertex(new Vector3f().add(trailDir).add(sideDir).mul(headSize).add(center));
@@ -713,7 +705,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
                 // ===== 尾迹：沿轨迹方向的矩形 =====
                 Vector3f trail = new Vector3f(currentPos).lerp(meteor.startPosition(), progress*(1-progress)).normalize(starDist);
                 
-                float halfWid = 0.05f;
+                float halfWid = 0.04f;
                 Vector3f sOff = sideDir.mul(halfWid);
                 
                 builder.addVertex(new Vector3f(trail).sub(sOff));
@@ -733,7 +725,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
                     GpuTextureView depthTexture = Minecraft.getInstance().getMainRenderTarget().getDepthTextureView();
                     GpuBuffer indexBuffer = this.quadIndices.getBuffer(totalIndices);
                     GpuBufferSlice dynamicTransforms = RenderSystem.getDynamicUniforms()
-                        .writeTransform(modelViewStack, new Vector4f(0.6f, 0.6f, 0.01f, starBrightness), new Vector3f(), new Matrix4f());
+                        .writeTransform(modelViewStack, new Vector4f(0.6f, 0.6f, 0.01f, starBrightness * 0.7f), new Vector3f(), new Matrix4f());
 
                     try (RenderPass renderPass = RenderSystem.getDevice()
                             .createCommandEncoder()
