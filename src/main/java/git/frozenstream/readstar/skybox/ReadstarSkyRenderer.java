@@ -52,8 +52,6 @@ import java.util.OptionalDouble;
 import java.util.OptionalInt;
 
 public class ReadstarSkyRenderer implements AutoCloseable {
-    public static CelestialBody Observer;
-
     private static final Identifier SUN_SPRITE = Identifier.fromNamespaceAndPath("minecraft", "environment/celestial/sun");
     private static final Identifier END_FLASH_SPRITE = Identifier.fromNamespaceAndPath("minecraft", "environment/celestial/end_flash");
     private static final Identifier END_SKY_LOCATION = Identifier.withDefaultNamespace("textures/environment/end_sky.png");
@@ -527,10 +525,10 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         Quaternionf frameQuat = null;
         Vector3f observerPos = null;
 
-        if (Observer != null) {
-            observerPos = Observer.position;
-            Vector3f yAxis = new Vector3f(Observer.currentRotationVector).normalize();
-            Vector3f zAxis = new Vector3f(Observer.getRotationAxis()).normalize();
+        if (ReadStarClient.Observer != null) {
+            observerPos = ReadStarClient.Observer.position;
+            Vector3f yAxis = new Vector3f(ReadStarClient.Observer.currentRotationVector).normalize();
+            Vector3f zAxis = new Vector3f(ReadStarClient.Observer.getRotationAxis()).normalize();
             if (yAxis.lengthSquared() > 0.001f && zAxis.lengthSquared() > 0.001f) {
                 Vector3f xAxis = new Vector3f(yAxis).cross(zAxis).normalize();
                 // 构建标准正交基矩阵 [X | Y | Z]，映射 LOCAL→WORLD
@@ -552,7 +550,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
                 Vector3f toWorld = new Vector3f(earth.hostStar.position).sub(observerPos);
                 if (toWorld.lengthSquared() > 0.0001f) {
                     toWorld.normalize();
-                    float size = manager.getApparentSize(observerPos, earth.hostStar);
+                    float size = CelestialBodyManager.getApparentSize(observerPos, earth.hostStar);
                     poseStack.pushPose();
                     poseStack.mulPose(new Quaternionf().rotateTo(new Vector3f(0, 1, 0), toWorld));
                     this.renderSun(size, rainBrightness, poseStack);
@@ -567,7 +565,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
                 if (toWorld.lengthSquared() > 0.0001f) {
                     toWorld.normalize();
                     MoonPhase phase = computeMoonPhase(observerPos, moonBody);
-                    float size = manager.getApparentSize(observerPos, moonBody);
+                    float size = CelestialBodyManager.getApparentSize(observerPos, moonBody);
                     poseStack.pushPose();
                     poseStack.mulPose(new Quaternionf().rotateTo(new Vector3f(0, 1, 0), toWorld));
                     this.renderMoon(phase, size, rainBrightness, poseStack);
@@ -583,8 +581,8 @@ public class ReadstarSkyRenderer implements AutoCloseable {
             //   4. 找到则用 renderBody() 渲染，与 renderMoon() 相同的管线并复用 computeMoonPhase
             for (CelestialBody body : manager.getCelestialBodyTreeMap()) {
                 // 排除已单独渲染的对象
-                if (body == Observer) continue;
-                if (body == Observer.hostStar) continue;
+                if (body == ReadStarClient.Observer) continue;
+                if (body == ReadStarClient.Observer.hostStar) continue;
                 if (moonBody != null && body == moonBody) continue;
                 if (body.hostStar == null) continue;
 
@@ -592,7 +590,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
                 if (toWorld.lengthSquared() > 0.0001f) {
                     toWorld.normalize();
                     MoonPhase phase = computeMoonPhase(observerPos, body);
-                    float size = manager.getApparentSize(observerPos, body);
+                    float size = CelestialBodyManager.getApparentSize(observerPos, body);
                     GpuBuffer buffer = this.otherMoonsBuffers.get(body.name);
                     if (buffer != null) {
                         poseStack.pushPose();

@@ -1,6 +1,7 @@
 package git.frozenstream.readstar.skybox;
 
 import com.mojang.blaze3d.vertex.*;
+import git.frozenstream.readstar.ReadStarClient;
 import git.frozenstream.readstar.elements.CelestialBody;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.state.level.LevelRenderState;
@@ -27,7 +28,7 @@ public class ReadstarSkyboxRenderer implements CustomSkyboxRenderer, ResourceMan
     @Override
     public boolean renderSky(LevelRenderState levelRenderState, SkyRenderState skyRenderState, Matrix4fc modelViewMatrix, Runnable setupFog) {
         setupFog.run();
-        SkyRenderState state = levelRenderState.skyRenderState;
+        SkyRenderState state = skyRenderState;
         if (state.skybox == DimensionType.Skybox.END) {
             skyRenderer.renderEndSky();
             if (state.endFlashIntensity > 1.0E-5F) {
@@ -47,11 +48,5 @@ public class ReadstarSkyboxRenderer implements CustomSkyboxRenderer, ResourceMan
         }
         
         return true;
-    }
-
-
-    public void updateObserver(CelestialBody body,long daylightTime){
-        ReadstarSkyRenderer.Observer = body;
-        body.updateCurrentVec(daylightTime);
     }
 }

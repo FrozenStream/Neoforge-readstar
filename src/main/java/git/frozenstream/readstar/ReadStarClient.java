@@ -17,7 +17,9 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.client.resources.model.sprite.AtlasManager;
 import net.minecraft.resources.Identifier;
+import net.minecraft.util.ARGB;
 import net.minecraft.world.level.Level;
+import org.joml.Vector3f;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.ModContainer;
@@ -41,6 +43,9 @@ import net.neoforged.neoforge.data.event.GatherDataEvent;
 public class ReadStarClient {
     // 静态保存天空渲染器实例，以便在多个地方使用
     private static final ReadstarSkyboxRenderer skyboxRenderer = new ReadstarSkyboxRenderer();
+    /** 当前观测者（地球）的天体实例，由 skybox renderer 在每帧更新 */
+    public static CelestialBody Observer;
+
     public static final Identifier CELESTIAL_ATLAS_TEXTURE = Identifier.fromNamespaceAndPath(ReadStar.MODID,
             "textures/atlas/celestial.png");
     public static final Identifier CELESTIAL_ATLAS_INFO = Identifier.fromNamespaceAndPath(ReadStar.MODID, "celestial");
@@ -51,22 +56,22 @@ public class ReadStarClient {
     /** 自定义管线：与 CELESTIAL 相同但使用 POSITION_TEX_COLOR（支持逐星亮度 via setColor） */
     public static RenderPipeline STAR_TEXTURED_PIPELINE;
 
-   @SubscribeEvent
-   static void onRegisterStarPipelines(RegisterRenderPipelinesEvent event) {
-       // 参照 END_SKY（用 core/position_tex_color + POSITION_TEX_COLOR），但 blend 改为
-       // OVERLAY（与 CELESTIAL 一致）
-       STAR_TEXTURED_PIPELINE = RenderPipeline
-               .builder(new RenderPipeline.Snippet[] { RenderPipelines.MATRICES_PROJECTION_SNIPPET })
-               .withLocation(Identifier.fromNamespaceAndPath(ReadStar.MODID, "star_textured"))
-               .withVertexShader("core/position_tex_color")
-               .withFragmentShader("core/position_tex_color")
-               .withSampler("Sampler0")
-               .withColorTargetState(new ColorTargetState(BlendFunction.OVERLAY))
-               .withVertexFormat(DefaultVertexFormat.POSITION_TEX_COLOR, Mode.QUADS)
-               .build();
-       event.registerPipeline(STAR_TEXTURED_PIPELINE);
-       ReadStar.LOGGER.info("Registered custom star pipeline: readstar:star_textured");
-   }
+    @SubscribeEvent
+    static void onRegisterStarPipelines(RegisterRenderPipelinesEvent event) {
+        // 参照 END_SKY（用 core/position_tex_color + POSITION_TEX_COLOR），但 blend 改为
+        // OVERLAY（与 CELESTIAL 一致）
+        STAR_TEXTURED_PIPELINE = RenderPipeline
+                .builder(new RenderPipeline.Snippet[] { RenderPipelines.MATRICES_PROJECTION_SNIPPET })
+                .withLocation(Identifier.fromNamespaceAndPath(ReadStar.MODID, "star_textured"))
+                .withVertexShader("core/position_tex_color")
+                .withFragmentShader("core/position_tex_color")
+                .withSampler("Sampler0")
+                .withColorTargetState(new ColorTargetState(BlendFunction.OVERLAY))
+                .withVertexFormat(DefaultVertexFormat.POSITION_TEX_COLOR, Mode.QUADS)
+                .build();
+        event.registerPipeline(STAR_TEXTURED_PIPELINE);
+        ReadStar.LOGGER.info("Registered custom star pipeline: readstar:star_textured");
+    }
 
     public ReadStarClient(ModContainer container) {
         // Allows NeoForge to create semiMajorAxis config screen for this mod's configs.
@@ -99,31 +104,88 @@ public class ReadStarClient {
 
     @SubscribeEvent
     static void onExtractLevelRenderState(ExtractLevelRenderStateEvent event) {
-        var starBrightness = event.getRenderState().skyRenderState.starBrightness;
-        starBrightness = Math.min(1.0f, starBrightness * 5.f);
         var level = event.getLevel();
         var BlockPos = event.getCamera().blockPosition();
+
+        // ==== 处理星光亮度 ====
+        var starBrightness = event.getRenderState().skyRenderState.starBrightness;
+        starBrightness = Math.min(1.0f, starBrightness * 5.f);
         var lighting = level.getMaxLocalRawBrightness(BlockPos);
         starBrightness = starBrightness * (1 - lighting / 20.f);
         var fov = event.getCamera().getFov();
         starBrightness = starBrightness * Math.max(1.f, 2f - fov / 140.f);
         event.getRenderState().skyRenderState.starBrightness = Math.min(1.f, starBrightness);
 
-        long gameTime = event.getLevel().getGameTime();
-        long daylightTime = event.getLevel().getDefaultClockTime();
-
+        // ==== 更新天体位姿 ====
+        long gameTime = level.getGameTime();
+        long daylightTime = level.getDefaultClockTime();
         CelestialBodyManager.getInstance().updatePositions(20 * gameTime);
+
+        // ==== 设置观测者 ====
+        if (level.dimension() == Level.OVERWORLD) {
+            CelestialBody observer = CelestialBodyManager.getInstance().getCelestialBody("earth");
+            if (observer != null) {
+                Observer = observer;
+                observer.updateCurrentVec(daylightTime);
+            }
+        }
+
+        // ==== 处理 skycolor + 日食检测 ====
+        int skyColor = event.getRenderState().skyRenderState.skyColor;
+
+        CelestialBody obs = ReadStarClient.Observer;
+        if (obs != null && obs.hostStar != null) {
+            Vector3f observerPos = obs.position;
+            float hostSize = CelestialBodyManager.getApparentSize(observerPos, obs.hostStar) / 200.f;
+            float maxCoverage = 0f;
+
+            for (CelestialBody child : obs.children) {
+                Vector3f obsToChild = new Vector3f(child.position).sub(observerPos).normalize();
+                Vector3f obsToHost = new Vector3f(obs.hostStar.position).sub(observerPos).normalize();
+                float angSep = (float) Math.acos(Math.max(-1f, Math.min(1f, obsToChild.dot(obsToHost))));
+                float childSize = CelestialBodyManager.getApparentSize(observerPos, child) / 200.f;
+
+                if (angSep >= hostSize + childSize)
+                    continue;
+
+                float d = angSep, r1 = childSize, r2 = hostSize;
+                float coverage;
+
+                if (d + r2 <= r1) {
+                    coverage = 1f; // 卫星完全遮住主星
+                } else if (d + r1 <= r2) {
+                    coverage = (r1 * r1) / (r2 * r2); // 卫星在主星盘面内
+                } else {
+                    float d2 = d * d, r1_2 = r1 * r1, r2_2 = r2 * r2;
+                    float cos1 = Math.max(-1f, Math.min(1f, (d2 + r1_2 - r2_2) / (2f * d * r1)));
+                    float cos2 = Math.max(-1f, Math.min(1f, (d2 + r2_2 - r1_2) / (2f * d * r2)));
+                    float term1 = r1_2 * (float) Math.acos(cos1);
+                    float term2 = r2_2 * (float) Math.acos(cos2);
+                    float sqrtArg = Math.max(0f, (-d + r1 + r2) * (d + r1 - r2) * (d - r1 + r2) * (d + r1 + r2));
+                    float overlapArea = term1 + term2 - 0.5f * (float) Math.sqrt(sqrtArg);
+                    coverage = overlapArea / ((float) Math.PI * r2_2);
+                }
+
+                if (coverage > maxCoverage)
+                    maxCoverage = coverage;
+            }
+
+            if (maxCoverage > 0.1f) {
+                ReadStar.LOGGER.debug("Coverage: {}", maxCoverage);
+                float darkFactor = 1f - maxCoverage * 0.8f;
+                int r = (int) (ARGB.red(skyColor) * darkFactor);
+                int g = (int) (ARGB.green(skyColor) * darkFactor);
+                int b = (int) (ARGB.blue(skyColor) * darkFactor);
+                skyColor = ARGB.color(255, r, g, b);
+            }
+        }
+        event.getRenderState().skyRenderState.skyColor = skyColor;
 
         // 设置 Collector 的当前维度（维度变化时会自动清空旧数据）
         MeteorCollector.getInstance().setCurrentDimension(level.dimension().identifier());
-
         MeteorCollector.getInstance().tick(gameTime);
 
-        if (event.getLevel().dimension() == Level.OVERWORLD) {
-            if (CelestialBodyManager.getInstance().hasCelestialBody("earth")) {
-                CelestialBody earth = CelestialBodyManager.getInstance().getCelestialBody("earth");
-                skyboxRenderer.updateObserver(earth, daylightTime);
-            }
+        if (level.dimension() == Level.OVERWORLD) {
             event.getRenderState().customSkyboxRenderer = skyboxRenderer;
             event.getRenderState().customCloudsRenderer = new ReadStarCloudsRenderer();
         }

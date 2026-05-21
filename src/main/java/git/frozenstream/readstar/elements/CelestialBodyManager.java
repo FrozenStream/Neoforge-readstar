@@ -85,7 +85,7 @@ public class CelestialBodyManager {
      * @param target 目标天体
      * @return 目标视大小
      */
-    public float getApparentSize(Vector3f observer, CelestialBody target) {
+    public static float getApparentSize(Vector3f observer, CelestialBody target) {
         float distance = observer.distance(target.position);
         float k = (float) (target.radius / distance);
         float factor = Config.CELESTIAL_APPARENT_SIZE_FACTOR.get().floatValue();
@@ -99,7 +99,7 @@ public class CelestialBodyManager {
      * @param target 目标天体
      * @return 目标被遮蔽导致的不透明度值
      */
-    public float getCoveredBySun(Vector3f observer, CelestialBody target) {
+    public static float getCoveredBySun(Vector3f observer, CelestialBody target) {
         Vector3f obs_sun = (new Vector3f()).set(target.hostStar.position).sub(observer).normalize();
         Vector3f obs_tar = (new Vector3f()).set(target.position).sub(observer).normalize();
         return Mth.clamp(1 - obs_sun.dot(obs_tar),0.5f, 1f);
