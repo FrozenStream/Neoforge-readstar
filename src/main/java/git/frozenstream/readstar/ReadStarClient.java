@@ -3,8 +3,9 @@ package git.frozenstream.readstar;
 import com.mojang.blaze3d.pipeline.BlendFunction;
 import com.mojang.blaze3d.pipeline.ColorTargetState;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
-import com.mojang.blaze3d.vertex.DefaultVertexFormat;
+import com.mojang.blaze3d.vertex.VertexFormat;
 import com.mojang.blaze3d.vertex.VertexFormat.Mode;
+import com.mojang.blaze3d.vertex.VertexFormatElement;
 
 import git.frozenstream.readstar.elements.CelestialBodyManager;
 import git.frozenstream.readstar.elements.CelestialBody;
@@ -53,24 +54,39 @@ public class ReadStarClient {
             "textures/atlas/star.png");
     public static final Identifier STAR_ATLAS_INFO = Identifier.fromNamespaceAndPath(ReadStar.MODID, "star");
 
-    /** 自定义管线：与 CELESTIAL 相同但使用 POSITION_TEX_COLOR（支持逐星亮度 via setColor） */
+    /**
+     * 自定义管线：使用 star_fov shader，支持 Position(center) + Offset(billboard) 分离，
+     * 通过 FovCompensation uniform 保持星点屏幕大小不受 FOV 影响。
+     */
     public static RenderPipeline STAR_TEXTURED_PIPELINE;
+
+    /** 自定义顶点元素：billboard 偏移量 (vec3 float)，存储 rotation × (方向 × 星点大小) */
+    public static final VertexFormatElement OFFSET_ELEMENT = VertexFormatElement.register(
+            VertexFormatElement.findNextId(), 0, VertexFormatElement.Type.FLOAT, false, 3);
+
+    /** 自定义顶点格式：Position(center) + UV0 + Color + Offset */
+    public static final VertexFormat POSITION_TEX_COLOR_OFFSET = VertexFormat.builder()
+            .add("Position", VertexFormatElement.POSITION)
+            .add("UV0", VertexFormatElement.UV0)
+            .add("Color", VertexFormatElement.COLOR)
+            .add("Offset", OFFSET_ELEMENT)
+            .build();
 
     @SubscribeEvent
     static void onRegisterStarPipelines(RegisterRenderPipelinesEvent event) {
-        // 参照 END_SKY（用 core/position_tex_color + POSITION_TEX_COLOR），但 blend 改为
-        // OVERLAY（与 CELESTIAL 一致）
+        // 自定义管线：使用 star_fov shader（分离 center + billboard offset），
+        // FovCompensation 通过 DynamicTransforms.TextureMat[0][0] 传递。
         STAR_TEXTURED_PIPELINE = RenderPipeline
                 .builder(new RenderPipeline.Snippet[] { RenderPipelines.MATRICES_PROJECTION_SNIPPET })
                 .withLocation(Identifier.fromNamespaceAndPath(ReadStar.MODID, "star_textured"))
-                .withVertexShader("core/position_tex_color")
-                .withFragmentShader("core/position_tex_color")
+                .withVertexShader(Identifier.fromNamespaceAndPath(ReadStar.MODID, "core/star_fov"))
+                .withFragmentShader(Identifier.fromNamespaceAndPath(ReadStar.MODID, "core/star_fov"))
                 .withSampler("Sampler0")
                 .withColorTargetState(new ColorTargetState(BlendFunction.OVERLAY))
-                .withVertexFormat(DefaultVertexFormat.POSITION_TEX_COLOR, Mode.QUADS)
+                .withVertexFormat(POSITION_TEX_COLOR_OFFSET, Mode.QUADS)
                 .build();
         event.registerPipeline(STAR_TEXTURED_PIPELINE);
-        ReadStar.LOGGER.info("Registered custom star pipeline: readstar:star_textured");
+        ReadStar.LOGGER.info("Registered custom star pipeline: readstar:star_textured (fov-aware)");
     }
 
     public ReadStarClient(ModContainer container) {
@@ -113,8 +129,9 @@ public class ReadStarClient {
         var lighting = level.getMaxLocalRawBrightness(BlockPos);
         starBrightness = starBrightness * (1 - lighting / 20.f);
         var fov = event.getCamera().getFov();
-        starBrightness = starBrightness * Math.max(1.f, 2f - fov / 140.f);
-        event.getRenderState().skyRenderState.starBrightness = Math.min(1.f, starBrightness);
+        // FOV 缩小时提升亮度（星星更大但各项发光不变 → 需要更亮）
+        double brightnessFactor = 1.0 + Config.STAR_FOV_BRIGHTNESS_STRENGTH.get() * Math.max(0.0, (70.0 - fov) / 70.0);
+        event.getRenderState().skyRenderState.starBrightness = starBrightness * (float)brightnessFactor;
 
         // ==== 更新天体位姿 ====
         long gameTime = level.getGameTime();

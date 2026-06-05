@@ -19,6 +19,20 @@ public class Config {
             .comment("Star glow quad size multiplier for bright stars (Vmag < 2.0). Default: 1.5")
             .defineInRange("starGlowSize", 1.5, 0.01, 10.0);
 
+    public static final ModConfigSpec.DoubleValue STAR_FOV_COMPENSATION_STRENGTH = BUILDER
+            .comment("FOV compensation strength for star billboard size.\n"
+                    + "1.0 = full compensation (stars keep same screen size regardless of FOV).\n"
+                    + "0.0 = no compensation (stars change size with FOV).\n"
+                    + "Values > 1.0 exaggerate the effect. Default: 0.8")
+            .defineInRange("starFovCompensationStrength", 0.8, 0.0, 1.0);
+
+    public static final ModConfigSpec.DoubleValue STAR_FOV_BRIGHTNESS_STRENGTH = BUILDER
+            .comment("FOV brightness boost for stars.\n"
+                    + "Smaller FOV (zoomed in) → stars appear larger/dimmer → boost brightness.\n"
+                    + "0.0 = no FOV brightness effect.\n"
+                    + "1.0 = moderate boost. Default: 1.0")
+            .defineInRange("starFovBrightnessStrength", 1.0, 0.0, 1.0);
+
     public static final ModConfigSpec.DoubleValue CELESTIAL_APPARENT_SIZE_FACTOR = BUILDER
             .comment("Celestial body apparent size calculation factor. Larger values make all bodies appear larger. Default: 4000.0")
             .defineInRange("celestialApparentSizeFactor", 4000.0, 1.0, 100000.0);

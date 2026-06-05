@@ -1,130 +1,99 @@
 # ReadStar — NeoForge 26.1 Astronomy Mod
 
-A Minecraft sky mod driven by real celestial mechanics and star catalog data, featuring planetary orbital systems, star catalogs, three-tier glow rendering, and server-synchronized planetary system configuration.
+A Minecraft sky mod driven by real celestial mechanics and star catalog data, featuring planetary orbital systems, star catalogs, FOV-aware rendering, and server-synchronized celestial configuration.
 
 **Author**: FrozenStream
+
+## Features
+
+- **Real Celestial Mechanics** — Keplerian orbital system with unlimited nesting depth
+- **Real Star Catalog** — Hipparcos-derived star data with per-star brightness and glow
+- **FOV-Aware Rendering** — Custom shader keeps star screen size constant across FOV changes
+- **Zero-Code Customization** — Add 8 moon phases to any body by simply placing PNGs
+- **Server Sync** — Celestial config managed server-side, auto-synced to all clients
 
 ---
 
 ## Quick Start
 
 ```bash
-# Build
-./gradlew build
-
-# Run client
-./gradlew runClient
-
-# Data generation (atlas config)
-./gradlew runData
+./gradlew build          # Build
+./gradlew runClient      # Run client
+./gradlew runData        # Data generation (atlas config)
+./gradlew runServer      # Run server
 ```
 
-The celestial system is defined via **data pack** at `data/readstar/celestial/system.json`, and the star catalog is defined via **resource pack** at `assets/readstar/custom/stars/stars.json`.
+The celestial system is defined via **data pack** at `data/readstar/celestial/system.json`, and the star catalog via **resource pack** at `assets/readstar/custom/stars/stars.json`.
 
-After modifying config files, rebuild or use F3+T to reload resource packs (resource pack only; data packs require restart or `/reload`).
+Config changes take effect with F3+T. Data pack changes require `/reload` or restart.
 
 ---
 
-## Data Pack — Celestial System Configuration
+## Configuration
+
+Config file: `run/config/readstar-common.toml`
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `starCoreSize` | `0.648` | Star core quad size multiplier |
+| `starGlowSize` | `1.5` | Bright star glow quad size multiplier |
+| `starFovCompensationStrength` | `0.8` | Star **size** FOV compensation. `1.0` = full, `0.0` = none |
+| `starFovBrightnessStrength` | `1.0` | Star **brightness** boost when zoomed in. `0.0` = none |
+| `celestialApparentSizeFactor` | `4000.0` | Celestial body apparent size factor |
+| `celestialApparentSizeMin` | `1.024` | Minimum apparent size clamp |
+
+### FOV-Aware Rendering
+
+Stars use a custom shader that separates each point into **position** and **offset**:
+
+| Attribute | Meaning | Behavior |
+|-----------|---------|----------|
+| `Position` (vec3) | Celestial sphere coordinate, shared by 4 vertices | Transformed by MVP, naturally affected by FOV |
+| `Offset` (vec3) | Billboard corner offset, unique per vertex | Multiplied by `FovCompensation` for size correction |
+
+Formula: `FovCompensation = tan(fov/2) / tan(35°) × strength + (1 - strength)`
+
+Shader: `worldPos = Position + Offset × FovCompensation`
+
+### Per-Star Brightness
+
+Based on Vmag with independent decay thresholds:
+
+| Parameter | Formula | Notes |
+|-----------|---------|-------|
+| Alpha | `clamp(1 - max(0, Vmag-3)/12, 0.4, 1)` | Full brightness at Vmag ≤ 3 |
+| RGB | `clamp(1 - max(0, Vmag-1)/19, 0.7, 1)` | Full brightness at Vmag ≤ 1 |
+| Size | `clamp(1 - Vmag/12, 0.5, 1) × starCoreSize` | Larger Vmag = smaller dot |
+
+Glow quads only for Vmag < 2.0: `< 0.5 → high / < 1.5 → medium / < 2.0 → low`.
+
+---
+
+## Data Pack — Celestial System
 
 **Path**: `data/readstar/celestial/system.json`
 
-Place your custom data pack at `saves/<world>/datapacks/<your-pack>/data/readstar/celestial/system.json`, or on the server at `world/datapacks/`.
+Place at `saves/<world>/datapacks/<pack>/data/readstar/celestial/system.json` or server `world/datapacks/`.
 
 ### Structure
 
 ```json
 {
   "System": {
-    "<body name>": {
-      "mass": <double>,           // Mass (kg); 0 = fixed at origin
-      "radius": <double>,         // Radius (m); affects rendered size
-      "luminance": <int>,         // Self-luminosity (0~15); >0 marks as star
-      "axis": [<x>, <y>, <z>],    // Rotation axis; zero vector defaults to (0,0,-1)
+    "<name>": {
+      "mass": <double>,
+      "radius": <double>,
+      "luminance": <int>,
+      "axis": [<x>, <y>, <z>],
       "orbit": {
-        "semiMajorAxis": <double>,           // Semi-major axis (m); 0 = no orbit
-        "eccentricity": <double>,            // Eccentricity (0 = circular)
-        "inclination": <double>,             // Orbital inclination (radians)
-        "argumentOfPeriapsis": <double>,     // Argument of periapsis (radians)
-        "longitudeOfAscendingNode": <double>, // Longitude of ascending node (radians)
-        "initialMeanAnomaly": <double>       // Initial mean anomaly (radians)
+        "semiMajorAxis": <double>,
+        "eccentricity": <double>,
+        "inclination": <double>,
+        "argumentOfPeriapsis": <double>,
+        "longitudeOfAscendingNode": <double>,
+        "initialMeanAnomaly": <double>
       },
-      "children": {
-        "<child name>": { ... }   // Recursive; unlimited nesting depth
-      }
-    }
-  }
-}
-```
-
-### Complete Example
-
-A three-layer system: Sun (central star) → Earth + Mars → Moon (Earth's satellite), using real solar system data.
-
-```json
-{
-  "System": {
-    "Sun": {
-      "mass": 1.989e30,
-      "radius": 6.957e8,
-      "luminance": 15,
-      "axis": [0.0, 0.0, 0.0],
-      "orbit": {
-        "semiMajorAxis": 0.0,
-        "eccentricity": 0.0,
-        "inclination": 0.0,
-        "argumentOfPeriapsis": 0.0,
-        "longitudeOfAscendingNode": 0.0,
-        "initialMeanAnomaly": 0.0
-      },
-      "children": {
-        "Earth": {
-          "mass": 5.972e24,
-          "radius": 6.371e6,
-          "luminance": 0,
-          "axis": [0.0, 0.0, 0.0],
-          "orbit": {
-            "semiMajorAxis": 1.496e11,
-            "eccentricity": 0.0167,
-            "inclination": 0.0,
-            "argumentOfPeriapsis": 1.796,
-            "longitudeOfAscendingNode": 0.0,
-            "initialMeanAnomaly": 6.240
-          },
-          "children": {
-            "Moon": {
-              "mass": 7.342e22,
-              "radius": 1.737e6,
-              "luminance": 0,
-              "axis": [0.0, 0.0, 0.5],
-              "orbit": {
-                "semiMajorAxis": 3.844e8,
-                "eccentricity": 0.0549,
-                "inclination": 0.0899,
-                "argumentOfPeriapsis": 0.0,
-                "longitudeOfAscendingNode": 0.0,
-                "initialMeanAnomaly": 0.0
-              },
-              "children": {}
-            }
-          }
-        },
-        "Mars": {
-          "mass": 6.417e23,
-          "radius": 3.390e6,
-          "luminance": 0,
-          "axis": [0.0, 0.0, 0.0],
-          "orbit": {
-            "semiMajorAxis": 2.279e11,
-            "eccentricity": 0.0934,
-            "inclination": 0.0323,
-            "argumentOfPeriapsis": 0.0,
-            "longitudeOfAscendingNode": 0.865,
-            "initialMeanAnomaly": 0.0
-          },
-          "children": {}
-        }
-      }
+      "children": { "<name>": { ... } }
     }
   }
 }
@@ -134,37 +103,73 @@ A three-layer system: Sun (central star) → Earth + Mars → Moon (Earth's sate
 
 | Field | Description |
 |-------|-------------|
-| `mass` | Core orbital mechanics parameter. A body with mass 0 is fixed at its parent's position |
-| `radius` | Rendered size: `max(1.024, radius / distance × 2000)`. Diminishes with distance |
-| `luminance` | Bodies with `luminance > 0` are recognized as stars; child bodies auto-assign the nearest luminous ancestor as `hostStar` |
-| `inclination`, `longitudeOfAscendingNode` | Together define the orbital plane. `inclination=0` means the orbit lies in the reference plane |
-| `eccentricity` | 0 = circular orbit, > 0 = elliptical |
-| `initialMeanAnomaly` | Determines the body's starting position on its orbit at t=0 |
+| `mass` | Mass (kg). 0 = fixed at parent position |
+| `radius` | Radius (m). Apparent size = `max(1.024, radius / distance × factor)` |
+| `luminance` | Self-luminosity 0~15. >0 = star; children auto-resolve `hostStar` upward |
+| `axis` | Rotation axis. Zero vector defaults to `(0,0,-1)` |
+| `orbit.semiMajorAxis` | Semi-major axis (m). 0 = no orbit |
+| `orbit.eccentricity` | Eccentricity. 0 = circular |
+| `orbit.inclination` | Orbital inclination (radians) |
+| `orbit.argumentOfPeriapsis` | Argument of periapsis (radians) |
+| `orbit.longitudeOfAscendingNode` | Longitude of ascending node (radians) |
+| `orbit.initialMeanAnomaly` | Initial mean anomaly (radians) |
 
-Names are case-insensitive (internally converted to lowercase). Use `{}` for empty children.
+Names are case-insensitive. `children: {}` = no children. Nesting depth is unlimited.
 
-### Inheritance
+### Complete Example
 
-- `hostStar` is resolved by recursively searching upward for the nearest body with `luminance > 0`
-- Bodies without a luminous ancestor skip rendered sun-light effects
-- Position: `position = parent.position + orbit(parent.mass, t)`
-- Root node `Root` is fixed at `(0, 0, 0)`
+Sun → Earth + Mars → Moon. Real solar system data.
 
-### Daytime and Moon Phase
-
+```json
+{
+  "System": {
+    "Sun": {
+      "mass": 1.989e30, "radius": 6.957e8, "luminance": 15,
+      "axis": [0, 0, 0],
+      "orbit": { "semiMajorAxis": 0, "eccentricity": 0, "inclination": 0, "argumentOfPeriapsis": 0, "longitudeOfAscendingNode": 0, "initialMeanAnomaly": 0 },
+      "children": {
+        "Earth": {
+          "mass": 5.972e24, "radius": 6.371e6, "luminance": 0,
+          "axis": [0, 0, 0],
+          "orbit": { "semiMajorAxis": 1.496e11, "eccentricity": 0.0167, "inclination": 0, "argumentOfPeriapsis": 1.796, "longitudeOfAscendingNode": 0, "initialMeanAnomaly": 6.240 },
+          "children": {
+            "Moon": {
+              "mass": 7.342e22, "radius": 1.737e6, "luminance": 0,
+              "axis": [0, 0, 0.5],
+              "orbit": { "semiMajorAxis": 3.844e8, "eccentricity": 0.0549, "inclination": 0.0899, "argumentOfPeriapsis": 0, "longitudeOfAscendingNode": 0, "initialMeanAnomaly": 0 },
+              "children": {}
+            }
+          }
+        },
+        "Mars": {
+          "mass": 6.417e23, "radius": 3.390e6, "luminance": 0,
+          "axis": [0, 0, 0],
+          "orbit": { "semiMajorAxis": 2.279e11, "eccentricity": 0.0934, "inclination": 0.0323, "argumentOfPeriapsis": 0, "longitudeOfAscendingNode": 0.865, "initialMeanAnomaly": 0 },
+          "children": {}
+        }
+      }
+    }
+  }
+}
 ```
-gameTime       → updatePositions(t)   → orbital revolution
-daylightTime   → updateCurrentVec(t)  → rotation/zenith update
-```
 
-- `gameTime`: total ticks since world creation. Controls orbital positions
-- `daylightTime`: dimension daylight cycle time (0~24000). Controls planet rotation and zenith direction
+### Inheritance & Time
 
-Moon phases are automatically computed from observer-satellite-star geometry, mapping a full orbit to all 8 phase types. Waxing vs. waning is determined by the sign of the observer-centric cross product against the orbital normal.
+- `hostStar`: resolved recursively upward to nearest `luminance > 0` ancestor
+- Position = `parent.position + orbit(parent.mass, gameTime)`
+- Root fixed at `(0, 0, 0)`
+- `gameTime` drives orbital motion; `daylightTime` (0~24000) drives rotation/zenith
+- Moon phases auto-computed from observer-satellite-star geometry
+
+### Sun Textures
+
+Single image per star. Place at `assets/<namespace>/textures/environment/celestial/suns/<name>.png`. `readstar:suns/white_sun.png` is a placeholder example — replace with your own.
 
 ---
 
-## Resource Pack — Star Catalog
+## Resource Pack
+
+### Star Catalog
 
 **Path**: `assets/readstar/custom/stars/stars.json`
 
@@ -174,6 +179,7 @@ Moon phases are automatically computed from observer-satellite-star geometry, ma
     {
       "name": "Sirius",
       "position": [-0.188181, -0.169608, 0.967338],
+      "type": 1,
       "Vmag": -1.46,
       "color": 4291815679
     }
@@ -183,60 +189,106 @@ Moon phases are automatically computed from observer-satellite-star geometry, ma
 
 | Field | Description |
 |-------|-------------|
-| `name` | Identifier; no runtime effect |
-| `position` | Direction vector `[x,y,z]` on the unit sphere; normalized and scaled to 100 during rendering |
-| `Vmag` | Apparent magnitude. `< 0.5`: high glow; `< 1.5`: medium glow; `< 2.0`: low glow; `≥ 2.0`: core only |
-| `color` | ARGB color value; used as the key for atlas sprite generation |
-
-Star brightness is mapped to vertex alpha: `clamp((14 - Vmag) / 15, 0.4, 1.0) × 255`.
+| `name` | Identifier (reserved, no runtime effect) |
+| `position` | Unit sphere direction `[x,y,z]`, normalized to distance 100 |
+| `type` | Reserved field, not read by code. Present in data but unused |
+| `Vmag` | Apparent magnitude. Determines glow tier and brightness decay |
+| `color` | ARGB color value; key for atlas sprite generation |
 
 ---
 
-## Resource Pack — Sprites & Atlas
+### Custom Moon Textures
 
-### Star Atlas
+Core feature: **add 8 moon phases to any celestial body by simply placing PNG files — zero code**.
 
-The atlas source is registered via `RegisterSpriteSourcesEvent` with type `readstar:star`, declared in `assets/readstar/atlases/star.json`:
+#### Directory
 
-```json
-{
-  "sources": [ { "type": "readstar:star" } ]
-}
+```
+assets/<namespace>/textures/environment/celestial/moons/<body-name>/
 ```
 
-At runtime, all `color` values from `stars.json` are read. The following base textures are used as stencils and tinted per-pixel:
+- `<body-name>` must match `system.json` name **in lowercase**
+- Requires **exactly 8 PNGs** with fixed filenames:
+
+| File | Phase |
+|------|-------|
+| `full_moon.png` | Full |
+| `waning_gibbous.png` | Waning Gibbous |
+| `third_quarter.png` | Third Quarter |
+| `waning_crescent.png` | Waning Crescent |
+| `new_moon.png` | New |
+| `waxing_crescent.png` | Waxing Crescent |
+| `first_quarter.png` | First Quarter |
+| `waxing_gibbous.png` | Waxing Gibbous |
+
+#### Requirements
+
+| Spec | Value |
+|------|-------|
+| Format | PNG, RGBA 32-bit |
+| Size | 16×16 or 32×32 recommended |
+| Edges | Transparent (alpha=0) |
+| Color | Self-colored; no runtime tinting |
+
+#### Example: Jupiter
+
+```
+assets/readstar/textures/environment/celestial/moons/jupiter/
+├── full_moon.png
+├── waning_gibbous.png
+├── third_quarter.png
+├── waning_crescent.png
+├── new_moon.png
+├── waxing_crescent.png
+├── first_quarter.png
+└── waxing_gibbous.png
+```
+
+Also define Jupiter's orbit in `system.json` (see example above).
+
+#### How It Works
+
+1. PNGs under `textures/environment/celestial/` auto-discovered by Minecraft's atlas system
+2. `ReadstarSkyRenderer` scans `moons/` subdirectories and builds GPU buffers by group
+3. Runtime matching by `body.name`
+
+Other mods can override textures via resource pack priority.
+
+---
+
+### Sprites & Atlas
+
+#### Star Atlas
+
+`assets/readstar/atlases/star.json` declares `readstar:star` source. At runtime, all `color` values from `stars.json` tint base stencils per-pixel:
 
 | Stencil | Path | Purpose |
 |---------|------|---------|
-| `star_base.png` | `textures/environment/star/` | Core texture (32×32, RGBA) |
-| `star_glow_low.png` | same | Low glow stencil |
-| `star_glow_med.png` | same | Medium glow stencil |
-| `star_glow_high.png` | same | High glow stencil |
+| `star_base.png` | `textures/environment/star/` | Core (32×32 RGBA) |
+| `star_glow_low.png` | same | Low glow |
+| `star_glow_med.png` | same | Medium glow |
+| `star_glow_high.png` | same | High glow |
 
-Each color produces 4 sprites: `color_{color}`, `glow_low_{color}`, `glow_med_{color}`, `glow_high_{color}`.
+Each color → 4 sprites: `color_{c}`, `glow_low_{c}`, `glow_med_{c}`, `glow_high_{c}`.
 
-Stencil requirements:
-- RGBA 32-bit PNG (8-bit grayscale will fail `NativeImage.read()`)
-- 32×32 pixels
-- Pure black edges (`rgb(0,0,0)`) to blend into the background
-- Glow brightness is suppressed by a factor of 0.35 based on the center 8×8 region sample
+Requirements: RGBA 32-bit, 32×32, black edges, glow brightness suppressed ×0.35.
 
-### Celestial Atlas
+#### Celestial Atlas
 
-Generated by `runData`, output at `src/generated/resources/assets/readstar/atlases/celestial.json`. Add new celestial body textures by modifying `CelestialSpriteSourceProvider` and re-running data generation.
+`assets/readstar/atlases/celestial.json` uses `minecraft:directory` source, auto-scanning all namespaces under `textures/environment/celestial/`.
 
 ---
 
 ## Network Sync
 
-The celestial system data is loaded from `data/readstar/celestial/*.json` on the server side and broadcast to all clients via the custom packet `readstar:planet_system`. `CelestialBodyManager.initializeFromJson()` parses and builds the body tree on the client upon receipt.
+Server loads `data/readstar/celestial/*.json` and broadcasts via `readstar:planet_system` packet. Client rebuilds the celestial tree in `CelestialBodyManager.initializeFromJson()`.
 
 ---
 
-## Build
+## Build & Troubleshooting
 
 ```bash
-./gradlew build          # Build mod JAR
+./gradlew build          # Build JAR
 ./gradlew runData        # Data generation (atlas config)
 ./gradlew runClient      # Run client
 ./gradlew runServer      # Run server
@@ -244,15 +296,14 @@ The celestial system data is loaded from `data/readstar/celestial/*.json` on the
 
 Output: `build/libs/readstar-*.jar`
 
-### Troubleshooting
-
 | Symptom | Check |
 |---------|-------|
 | Purple/black star textures | Is `star_base.png` 32-bit RGBA? |
-| Sun/moon not visible | Is `Observer` properly assigned in `ExtractLevelRenderStateEvent`? |
-| Celestial bodies in wrong direction | Check `currentRotationVector` calculation and `frameQuat` basis vectors |
-| Data pack not applied | Run `/reload` or restart the server |
-| Resource pack not updating | Press F3+T or rebuild |
+| Purple moon phase | Missing PNG or filename mismatch |
+| Body not visible | Does it have `hostStar` (ancestor luminance>0)? |
+| Data pack not applied | `/reload` or restart |
+| Resource pack not updating | F3+T |
+| FOV compensation not working | `starFovCompensationStrength` > 0? |
 
 ---
 
