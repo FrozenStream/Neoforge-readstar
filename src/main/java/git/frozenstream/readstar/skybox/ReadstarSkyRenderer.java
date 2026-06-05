@@ -258,16 +258,16 @@ public class ReadstarSkyRenderer implements AutoCloseable {
     }
 
     /**
-     * 从 stars.json 加载真实星数据，构建带纹理坐标的顶点缓冲。
-     * 每颗星是一个面向观察者的 billboard quad，使用图集中对应的颜色精灵。
+     * 从 stars.json 加载真实星数据，构建 Position(center) + UV + Color + Offset 格式的顶点缓冲。
+     * 每颗星 4 顶点 QUAD，所有顶点共享同一 Position（球心），用 Offset 区分 billboard 角落方向。
+     * Offset = (方向 × 星点大小)，着色器通过 FovCompensation 反补以保持屏幕大小不变。
      */
     private GpuBuffer buildStars(ResourceManager resourceManager) {
         Identifier starsDataPath = Identifier.fromNamespaceAndPath(ReadStar.MODID, "custom/stars/stars.json");
 
         JsonArray starsArray = new JsonArray();
         try {
-            Optional<net.minecraft.server.packs.resources.Resource> resourceOpt = resourceManager
-                    .getResource(starsDataPath);
+            Optional<Resource> resourceOpt = resourceManager.getResource(starsDataPath);
             if (resourceOpt.isPresent()) {
                 try (InputStreamReader reader = new InputStreamReader(resourceOpt.get().open(),
                         StandardCharsets.UTF_8)) {
@@ -282,22 +282,29 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         }
 
         int starCount = starsArray.size();
-        VertexFormat format = DefaultVertexFormat.POSITION_TEX_COLOR;
+        VertexFormat format = ReadStarClient.POSITION_TEX_COLOR_OFFSET;
         int vtxSize = format.getVertexSize();
+
+        // 预计算元素偏移量
+        int posOffset = format.getOffset(VertexFormatElement.POSITION);
+        int uvOffset = format.getOffset(VertexFormatElement.UV0);
+        int colorOffset = format.getOffset(VertexFormatElement.COLOR);
+        int offsetOffset = format.getOffset(ReadStarClient.OFFSET_ELEMENT);
+
         // 预计光晕星数量（Vmag < 2.0 才有光晕）
         int glowStarCount = 0;
         for (int i = 0; i < starCount; i++) {
             if (starsArray.get(i).getAsJsonObject().get("Vmag").getAsFloat() < 2.0f)
                 glowStarCount++;
         }
-        int totalQuads = starCount + glowStarCount; // 每星 1 核心 + 某些星额外 1 光晕
-        int totalVertices = totalQuads * 4;
+        int totalQuads = starCount + glowStarCount;
+        int totalVertices = totalQuads * 4; // QUADS 模式，每星 4 顶点
 
         // 如果没有星星数据，返回一个空的缓冲
         if (totalVertices == 0) {
             this.starIndexCount = 0;
             try (ByteBufferBuilder buf = ByteBufferBuilder.exactlySized(1)) {
-                BufferBuilder builder = new BufferBuilder(buf, VertexFormat.Mode.QUADS, format);
+                BufferBuilder builder = new BufferBuilder(buf, VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX_COLOR);
                 try (MeshData mesh = builder.buildOrThrow()) {
                     return RenderSystem.getDevice().createBuffer(() -> "Stars vertex buffer (empty)", 32,
                             mesh.vertexBuffer());
@@ -306,10 +313,10 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         }
 
         var coreSize = Config.STAR_CORE_SIZE.get().floatValue();
-        var glowSIze = Config.STAR_GLOW_SIZE.get().floatValue();
+        var glowSize = Config.STAR_GLOW_SIZE.get().floatValue();
 
         try (ByteBufferBuilder buf = ByteBufferBuilder.exactlySized(vtxSize * totalVertices)) {
-            BufferBuilder builder = new BufferBuilder(buf, VertexFormat.Mode.QUADS, format);
+
             for (int i = 0; i < starCount; i++) {
                 try {
                     JsonObject star = starsArray.get(i).getAsJsonObject();
@@ -320,35 +327,27 @@ public class ReadstarSkyRenderer implements AutoCloseable {
                     float vmag = star.get("Vmag").getAsFloat();
                     int color = star.get("color").getAsInt();
 
-                    // Billboard 变换
-                    float starDist = 100.0F;
-                    Vector3f center = new Vector3f(px, py, pz).normalize(starDist);
-                    Vector3f dirToCenter = new Vector3f(center).negate();
-                    Matrix3f rotation = new Matrix3f().rotateTowards(dirToCenter, new Vector3f(0.0F, 1.0F, 0.0F));
+                    // 球面位置（着色器内部计算 billboard 朝向）
+                    Vector3f center = new Vector3f(px, py, pz).normalize(100.0F);
 
-                    // 逐星亮度
-                    int starAlpha = (int) (Mth.clamp(1.0f - vmag / 15.0f, 0.4f, 1.0f) * 255.0f);
-                    int starColor = (int) (Mth.clamp(1.0f - vmag / 20.0f, 0.7f, 1.0f) * 255.0f);
-                    float starSize = Mth.clamp(1.0f - vmag / 12.0f, 0.5f, 1.0f) * coreSize;
+                    // 逐星亮度：alpha 从 vmag>3 衰减，RGB 从 vmag>1 衰减
+                    float alphaF = Math.max(1.0f - Math.max(0.0f, vmag - 3.0f) / 15.0f, 0.5f);
+                    float colorF = Math.max(1.0f - Math.max(0.0f, vmag - 1.0f) / 20.0f, 0.5f);
+                    int starAlpha = (int) (alphaF * 255.0f);
+                    int starColor = (int) (colorF * 255.0f);
+                    float starSize = Math.max(1.0f - Math.max(0.0f, vmag - 1.0f) / 15.0f, 0.5f) * coreSize;
 
-                    // ---- 核心 quad（所有星） ----
-                    Identifier coreId = Identifier.fromNamespaceAndPath(ReadStar.MODID,
-                            "environment/stars/color_" + color);
+                    // ---- 核心 quad（所有星）：4 顶点共享 center，Offset 区分角落 ----
+                    Identifier coreId = Identifier.fromNamespaceAndPath(ReadStar.MODID, "environment/stars/color_" + color);
                     TextureAtlasSprite coreSprite = this.starsAtlas.getSprite(coreId);
-                    builder.addVertex(new Vector3f(starSize, -starSize, 0.0F).mul(rotation).add(center))
-                            .setUv(coreSprite.getU0(), coreSprite.getV0())
-                            .setColor(starColor, starColor, starColor, starAlpha);
-                    builder.addVertex(new Vector3f(starSize, starSize, 0.0F).mul(rotation).add(center))
-                            .setUv(coreSprite.getU1(), coreSprite.getV0())
-                            .setColor(starColor, starColor, starColor, starAlpha);
-                    builder.addVertex(new Vector3f(-starSize, starSize, 0.0F).mul(rotation).add(center))
-                            .setUv(coreSprite.getU1(), coreSprite.getV1())
-                            .setColor(starColor, starColor, starColor, starAlpha);
-                    builder.addVertex(new Vector3f(-starSize, -starSize, 0.0F).mul(rotation).add(center))
-                            .setUv(coreSprite.getU0(), coreSprite.getV1())
-                            .setColor(starColor, starColor, starColor, starAlpha);
 
-                    // ---- 光晕 quad（仅 Vmag < 2.0 的亮星，按亮度分三级） ----
+                    StarBufferUtils.writeStarQuad(buf, vtxSize, posOffset, uvOffset, colorOffset, offsetOffset,
+                            center,
+                            coreSprite.getU0(), coreSprite.getV0(), coreSprite.getU1(), coreSprite.getV1(),
+                            starColor, starAlpha,
+                            starSize);
+
+                    // ---- 光晕 quad（仅 Vmag < 2.0 的亮星） ----
                     if (vmag < 2.0f) {
                         String glowLevel;
                         if (vmag < 0.5f)
@@ -358,17 +357,14 @@ public class ReadstarSkyRenderer implements AutoCloseable {
                         else
                             glowLevel = "glow_low";
 
-                        String glowPath = "environment/stars/" + glowLevel + "_" + color;
-                        Identifier glowId = Identifier.fromNamespaceAndPath(ReadStar.MODID, glowPath);
+                        Identifier glowId = Identifier.fromNamespaceAndPath(ReadStar.MODID, "environment/stars/" + glowLevel + "_" + color);
                         TextureAtlasSprite glowSprite = this.starsAtlas.getSprite(glowId);
-                        builder.addVertex(new Vector3f(glowSIze, -glowSIze, 0.0F).mul(rotation).add(center))
-                                .setUv(glowSprite.getU0(), glowSprite.getV0()).setColor(255, 255, 255, starAlpha);
-                        builder.addVertex(new Vector3f(glowSIze, glowSIze, 0.0F).mul(rotation).add(center))
-                                .setUv(glowSprite.getU1(), glowSprite.getV0()).setColor(255, 255, 255, starAlpha);
-                        builder.addVertex(new Vector3f(-glowSIze, glowSIze, 0.0F).mul(rotation).add(center))
-                                .setUv(glowSprite.getU1(), glowSprite.getV1()).setColor(255, 255, 255, starAlpha);
-                        builder.addVertex(new Vector3f(-glowSIze, -glowSIze, 0.0F).mul(rotation).add(center))
-                                .setUv(glowSprite.getU0(), glowSprite.getV1()).setColor(255, 255, 255, starAlpha);
+
+                        StarBufferUtils.writeStarQuad(buf, vtxSize, posOffset, uvOffset, colorOffset, offsetOffset,
+                                center,
+                                glowSprite.getU0(), glowSprite.getV0(), glowSprite.getU1(), glowSprite.getV1(),
+                                255, starAlpha,
+                                glowSize);
                     }
 
                 } catch (Exception e) {
@@ -376,12 +372,24 @@ public class ReadstarSkyRenderer implements AutoCloseable {
                 }
             }
 
-            try (MeshData mesh = builder.buildOrThrow()) {
-                this.starIndexCount = mesh.drawState().indexCount();
-                ReadStar.LOGGER.info("Built star vertex buffer with {} indices ({} stars, {} with glow)",
-                        this.starIndexCount, starCount, glowStarCount);
-                return RenderSystem.getDevice().createBuffer(() -> "Stars vertex buffer", 32, mesh.vertexBuffer());
+            // 构建 GPU 缓冲
+            ByteBufferBuilder.Result result = buf.build();
+            if (result == null) {
+                this.starIndexCount = 0;
+                ReadStar.LOGGER.warn("Star buffer build returned null");
+                try (ByteBufferBuilder emptyBuf = ByteBufferBuilder.exactlySized(1)) {
+                    BufferBuilder b = new BufferBuilder(emptyBuf, VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX_COLOR);
+                    try (MeshData mesh = b.buildOrThrow()) {
+                        return RenderSystem.getDevice().createBuffer(() -> "Stars vertex buffer (fallback)", 32, mesh.vertexBuffer());
+                    }
+                }
             }
+
+            // QUADS 模式：indexCount = vertexCount / 4 * 6
+            this.starIndexCount = totalVertices / 4 * 6;
+            ReadStar.LOGGER.info("Built star vertex buffer with {} indices ({} stars, {} with glow)",
+                    this.starIndexCount, starCount, glowStarCount);
+            return RenderSystem.getDevice().createBuffer(() -> "Stars vertex buffer", 32, result.byteBuffer());
         }
     }
 
@@ -848,12 +856,25 @@ public class ReadstarSkyRenderer implements AutoCloseable {
     }
 
     /**
-     * 渲染星星：使用 CELESTIAL 管线 + 星星图集纹理，
-     * 每颗星是一个 billboard quad，带有该星特有的颜色贴图。
+     * 渲染星星：使用 star_fov 管线 + 星星图集纹理。
+     * 通过 FovCompensation uniform 保持星点屏幕大小不受 FOV 变化影响。
      */
     private void renderStars(float starBrightness, PoseStack poseStack) {
         if (this.starIndexCount <= 0)
             return;
+
+        // 计算 FOV 补偿系数：tan(currentFov/2) / tan(70°/2)
+        // FOV 变小 → 投影放大物体 → compensation < 1 收缩 billboard 以保持屏幕大小
+        Camera camera = Minecraft.getInstance().gameRenderer.getMainCamera();
+        float currentFov = camera.getFov();
+        float fovCompensation;
+        if (currentFov > 0.1f) {
+            double halfFovRad = Math.toRadians(currentFov / 2.0);
+            double strength = Config.STAR_FOV_COMPENSATION_STRENGTH.get(); // 1.0 = 完全补偿
+            fovCompensation = (float)(Math.tan(halfFovRad) / Math.tan(Math.toRadians(35.0)) * strength + (1.0 - strength));
+        } else {
+            fovCompensation = 1.0f;
+        }
 
         Matrix4fStack modelViewStack = RenderSystem.getModelViewStack();
         modelViewStack.pushMatrix();
@@ -861,10 +882,14 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         GpuTextureView colorTexture = Minecraft.getInstance().getMainRenderTarget().getColorTextureView();
         GpuTextureView depthTexture = Minecraft.getInstance().getMainRenderTarget().getDepthTextureView();
         GpuBuffer indexBuffer = this.quadIndices.getBuffer(this.starIndexCount);
+
+        // 将 FovCompensation 编码到 TextureMat[0][0]（着色器中 #define FovCompensation TextureMat[0][0]）
+        Matrix4f texMat = new Matrix4f();
+        texMat.m00(fovCompensation);
         GpuBufferSlice dynamicTransforms = RenderSystem.getDynamicUniforms()
                 .writeTransform(modelViewStack,
                         new Vector4f(starBrightness, starBrightness, starBrightness, starBrightness), new Vector3f(),
-                        new Matrix4f());
+                        texMat);
 
         try (RenderPass renderPass = RenderSystem.getDevice()
                 .createCommandEncoder()
