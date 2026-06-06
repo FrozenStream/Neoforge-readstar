@@ -1,8 +1,6 @@
 package git.frozenstream.readstar.skybox;
 
 import com.mojang.blaze3d.vertex.*;
-import git.frozenstream.readstar.ReadStarClient;
-import git.frozenstream.readstar.elements.CelestialBody;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.state.level.LevelRenderState;
 import net.minecraft.client.renderer.state.level.SkyRenderState;
