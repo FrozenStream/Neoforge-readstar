@@ -16,6 +16,11 @@ import org.joml.Matrix4fc;
 public class ReadstarSkyboxRenderer implements CustomSkyboxRenderer, ResourceManagerReloadListener {
     private ReadstarSkyRenderer skyRenderer = null;
 
+    /** 获取当前天空渲染器实例（供 HUD 等外部调用） */
+    public ReadstarSkyRenderer getSkyRenderer() {
+        return skyRenderer;
+    }
+
     @Override
     public void onResourceManagerReload(ResourceManager resourceManager) {
         if (this.skyRenderer != null) {

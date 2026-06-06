@@ -1,5 +1,7 @@
 package git.frozenstream.readstar.elements;
 
+import org.joml.Matrix3f;
+import org.joml.Quaternionf;
 import org.joml.Vector3f;
 import java.util.ArrayList;
 
@@ -78,6 +80,12 @@ public class CelestialBody {
      * 用于计算日照角度和昼夜变化
      */
     public Vector3f noonRotationVector;
+
+    /**
+     * 局部坐标系 → 世界坐标系的旋转四元数，由 updateCurrentVec() 同步更新。
+     * 基于 currentRotationVector (Y轴/天顶) 和 rotationAxis (Z轴/极轴) 构建标准正交基。
+     */
+    private final Quaternionf localToWorldQuat = new Quaternionf();
 
     /**
      * 虚拟根节点，用于构建天体层级树的根
@@ -162,11 +170,34 @@ public class CelestialBody {
      * 根据维度日周期时间更新当前天顶方向向量。
      * currentRotationVector = noonRotationVector 绕 rotationAxis 旋转 -θ
      * 其中 θ = (t - 6000) × π / 12000，t 为 0~24000 的维度日光时间
+     * 同时更新局部→世界坐标系的旋转四元数（Y=天顶, Z=极轴, X=Y×Z）。
      */
     public void updateCurrentVec(long daylightTick) {
         float theta = (daylightTick - 6000) * (float) Math.PI / 12000;
         Vector3f axis = getRotationAxis();
         this.currentRotationVector.set(this.noonRotationVector).rotateAxis(-theta, axis.x, axis.y, axis.z);
+
+        // 同步更新局部→世界坐标系的旋转四元数
+        Vector3f yAxis = new Vector3f(this.currentRotationVector).normalize();
+        Vector3f zAxis = new Vector3f(getRotationAxis()).normalize();
+        if (yAxis.lengthSquared() > 0.001f && zAxis.lengthSquared() > 0.001f) {
+            Vector3f xAxis = new Vector3f(yAxis).cross(zAxis).normalize();
+            Matrix3f basis = new Matrix3f();
+            basis.m00(xAxis.x); basis.m10(xAxis.y); basis.m20(xAxis.z);
+            basis.m01(yAxis.x); basis.m11(yAxis.y); basis.m21(yAxis.z);
+            basis.m02(zAxis.x); basis.m12(zAxis.y); basis.m22(zAxis.z);
+            this.localToWorldQuat.setFromNormalized(basis);
+        }
+    }
+
+    /**
+     * 获取局部坐标系到世界坐标系的旋转四元数。
+     * 由 updateCurrentVec() 每帧同步更新，可直接用于渲染变换。
+     *
+     * @return 局部→世界的旋转四元数
+     */
+    public Quaternionf getLocalToWorldQuaternion() {
+        return localToWorldQuat;
     }
 
     /**

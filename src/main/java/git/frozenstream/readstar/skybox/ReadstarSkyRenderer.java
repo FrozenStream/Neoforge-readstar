@@ -3,6 +3,10 @@ package git.frozenstream.readstar.skybox;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import net.minecraft.client.gui.Font;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.network.chat.Component;
+import net.minecraft.world.phys.Vec3;
 import com.mojang.blaze3d.buffers.GpuBuffer;
 import com.mojang.blaze3d.buffers.GpuBufferSlice;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
@@ -67,6 +71,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
     private static final float END_FLASH_SCALE = 60.0F;
     private final TextureAtlas celestialsAtlas;
     private final TextureAtlas starsAtlas;
+    private final List<Star> stars;
     private final GpuBuffer starBuffer;
     private final GpuBuffer topSkyBuffer;
     private final GpuBuffer bottomSkyBuffer;
@@ -81,10 +86,20 @@ public class ReadstarSkyRenderer implements AutoCloseable {
     private final AbstractTexture endSkyTexture;
     private int starIndexCount;
 
+    /**
+     * 天球星表数据记录，存储从 stars.json 解析的原始星数据，可复用。
+     * @param name      恒星名称（如 "Sirius", "Canopus"）
+     * @param direction 天球上的单位方向向量（归一化）
+     * @param vmag      视星等（数值越小越亮）
+     * @param color     颜色索引（0-6，映射到 environment/stars/color_* 纹理）
+     */
+    public record Star(String name, Vector3f direction, float vmag, int color) {}
+
     public ReadstarSkyRenderer(TextureManager textureManager, AtlasManager atlasManager, ResourceManager resourceManager) {
         this.celestialsAtlas = atlasManager.getAtlasOrThrow(ReadStarClient.CELESTIAL_ATLAS_INFO);
         this.starsAtlas = atlasManager.getAtlasOrThrow(ReadStarClient.STAR_ATLAS_INFO);
-        this.starBuffer = this.buildStars(resourceManager);
+        this.stars = parseStars(resourceManager);
+        this.starBuffer = buildStarsBuffer(this.stars);
         this.endSkyBuffer = buildEndSky();
         this.endSkyTexture = this.getTexture(textureManager, END_SKY_LOCATION);
         this.endFlashBuffer = buildEndFlashQuad(this.celestialsAtlas);
@@ -258,22 +273,32 @@ public class ReadstarSkyRenderer implements AutoCloseable {
     }
 
     /**
-     * 从 stars.json 加载真实星数据，构建 Position(center) + UV + Color + Offset 格式的顶点缓冲。
-     * 每颗星 4 顶点 QUAD，所有顶点共享同一 Position（球心），用 Offset 区分 billboard 角落方向。
-     * Offset = (方向 × 星点大小)，着色器通过 FovCompensation 反补以保持屏幕大小不变。
+     * 从 stars.json 解析星表数据，返回不可变列表。
      */
-    private GpuBuffer buildStars(ResourceManager resourceManager) {
+    private static List<Star> parseStars(ResourceManager resourceManager) {
         Identifier starsDataPath = Identifier.fromNamespaceAndPath(ReadStar.MODID, "custom/stars/stars.json");
+        List<Star> result = new ArrayList<>();
 
-        JsonArray starsArray = new JsonArray();
         try {
             Optional<Resource> resourceOpt = resourceManager.getResource(starsDataPath);
             if (resourceOpt.isPresent()) {
+                JsonArray starsArray;
                 try (InputStreamReader reader = new InputStreamReader(resourceOpt.get().open(),
                         StandardCharsets.UTF_8)) {
                     starsArray = JsonParser.parseReader(reader).getAsJsonObject().getAsJsonArray("Stars");
                 }
-                ReadStar.LOGGER.info("Loaded {} stars from {}", starsArray.size(), starsDataPath);
+                for (int i = 0; i < starsArray.size(); i++) {
+                    JsonObject obj = starsArray.get(i).getAsJsonObject();
+                    JsonArray pos = obj.getAsJsonArray("position");
+                    float px = pos.get(0).getAsFloat();
+                    float py = pos.get(1).getAsFloat();
+                    float pz = pos.get(2).getAsFloat();
+                    String name = obj.get("name").getAsString();
+                    float vmag = obj.get("Vmag").getAsFloat();
+                    int color = obj.get("color").getAsInt();
+                    result.add(new Star(name, new Vector3f(px, py, pz).normalize(), vmag, color));
+                }
+                ReadStar.LOGGER.info("Parsed {} stars from {}", result.size(), starsDataPath);
             } else {
                 ReadStar.LOGGER.warn("Star data file not found: {}", starsDataPath);
             }
@@ -281,7 +306,16 @@ public class ReadstarSkyRenderer implements AutoCloseable {
             ReadStar.LOGGER.error("Failed to load star data from {}: {}", starsDataPath, e.getMessage());
         }
 
-        int starCount = starsArray.size();
+        return List.copyOf(result);
+    }
+
+    /**
+     * 从已解析的 Star 列表构建 Position(center) + UV + Color + Offset 格式的 GPU 顶点缓冲。
+     * 每颗星 4 顶点 QUAD，所有顶点共享同一 Position（球心），用 Offset 区分 billboard 角落方向。
+     * Offset = (方向 × 星点大小)，着色器通过 FovCompensation 反补以保持屏幕大小不变。
+     */
+    private GpuBuffer buildStarsBuffer(List<Star> stars) {
+        int starCount = stars.size();
         VertexFormat format = ReadStarClient.POSITION_TEX_COLOR_OFFSET;
         int vtxSize = format.getVertexSize();
 
@@ -293,8 +327,8 @@ public class ReadstarSkyRenderer implements AutoCloseable {
 
         // 预计光晕星数量（Vmag < 2.0 才有光晕）
         int glowStarCount = 0;
-        for (int i = 0; i < starCount; i++) {
-            if (starsArray.get(i).getAsJsonObject().get("Vmag").getAsFloat() < 2.0f)
+        for (Star star : stars) {
+            if (star.vmag < 2.0f)
                 glowStarCount++;
         }
         int totalQuads = starCount + glowStarCount;
@@ -317,18 +351,13 @@ public class ReadstarSkyRenderer implements AutoCloseable {
 
         try (ByteBufferBuilder buf = ByteBufferBuilder.exactlySized(vtxSize * totalVertices)) {
 
-            for (int i = 0; i < starCount; i++) {
+            for (Star star : stars) {
                 try {
-                    JsonObject star = starsArray.get(i).getAsJsonObject();
-                    JsonArray pos = star.getAsJsonArray("position");
-                    float px = pos.get(0).getAsFloat();
-                    float py = pos.get(1).getAsFloat();
-                    float pz = pos.get(2).getAsFloat();
-                    float vmag = star.get("Vmag").getAsFloat();
-                    int color = star.get("color").getAsInt();
+                    float vmag = star.vmag;
+                    int color = star.color;
 
                     // 球面位置（着色器内部计算 billboard 朝向）
-                    Vector3f center = new Vector3f(px, py, pz).normalize(100.0F);
+                    Vector3f center = new Vector3f(star.direction).normalize(100.0F);
 
                     // 逐星亮度：alpha 从 vmag>3 衰减，RGB 从 vmag>1 衰减
                     float alphaF = Math.max(1.0f - Math.max(0.0f, vmag - 3.0f) / 15.0f, 0.5f);
@@ -368,7 +397,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
                     }
 
                 } catch (Exception e) {
-                    ReadStar.LOGGER.warn("Failed to build star vertex at index {}: {}", i, e.getMessage());
+                    ReadStar.LOGGER.warn("Failed to build star vertex: {}", e.getMessage());
                 }
             }
 
@@ -530,24 +559,13 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         // Z = rotationAxis (天球极轴)              → 标准 Z(0,0,1) 映射至此
         // X = Y × Z
         boolean hasFrame = false;
-        Quaternionf frameQuat = null;
         Vector3f observerPos = null;
 
         if (ReadStarClient.Observer != null) {
             observerPos = ReadStarClient.Observer.position;
-            Vector3f yAxis = new Vector3f(ReadStarClient.Observer.currentRotationVector).normalize();
-            Vector3f zAxis = new Vector3f(ReadStarClient.Observer.getRotationAxis()).normalize();
-            if (yAxis.lengthSquared() > 0.001f && zAxis.lengthSquared() > 0.001f) {
-                Vector3f xAxis = new Vector3f(yAxis).cross(zAxis).normalize();
-                // 构建标准正交基矩阵 [X | Y | Z]，映射 LOCAL→WORLD
-                Matrix3f basis = new Matrix3f();
-                basis.m00(xAxis.x); basis.m10(xAxis.y); basis.m20(xAxis.z);
-                basis.m01(yAxis.x); basis.m11(yAxis.y); basis.m21(yAxis.z);
-                basis.m02(zAxis.x); basis.m12(zAxis.y); basis.m22(zAxis.z);
-                frameQuat = new Quaternionf().setFromNormalized(basis);
-                poseStack.mulPose(frameQuat);
-                hasFrame = true;
-            }
+            Quaternionf frameQuat = ReadStarClient.Observer.getLocalToWorldQuaternion();
+            poseStack.mulPose(frameQuat);
+            hasFrame = true;
         }
 
         // ===== 在天球框架内各自指向世界坐标方向 =====
@@ -992,6 +1010,100 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         }
 
         modelViewStack.popMatrix();
+    }
+
+    /**
+     * 在望远镜视角下，于左上角显示高度角，并在对准的恒星位置跟随渲染 tooltip。
+     * 由 ReadStarClient.onRenderGui 每帧调用。
+     */
+    public void renderHud(GuiGraphicsExtractor g) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.player == null || mc.options.hideGui) return;
+        if (!mc.player.isScoping()) return; // 仅在使用望远镜时显示
+        if (ReadStarClient.Observer == null) return;
+
+        // 获取玩家视线方向（世界坐标）→ 逆变换到天体局部坐标
+        Vec3 worldLook = mc.player.getViewVector(1.0f);
+        Quaternionf invQuat = new Quaternionf(ReadStarClient.Observer.getLocalToWorldQuaternion()).conjugate();
+        Vector3f celestialDir = invQuat.transform(
+                new Vector3f((float) worldLook.x, (float) worldLook.y, (float) worldLook.z));
+
+        // 视线在地平面以下 → 跳过
+        if (worldLook.y <= 0) return;
+
+        // 查找视线最近的恒星
+        Star nearestStar = null;
+        float bestDot = -2.0f;
+        for (Star s : this.stars) {
+            float dot = celestialDir.dot(s.direction);
+            if (dot > bestDot) {
+                bestDot = dot;
+                nearestStar = s;
+            }
+        }
+
+        Font font = mc.font;
+        int dimColor = 0xCC888888;
+        int brightColor = 0xCCFFFFFF;
+
+        // 左上角：高度角
+        float altitude = (float) Math.toDegrees(Math.asin(Math.max(-1.0, Math.min(1.0, celestialDir.y))));
+        g.text(font, String.format("Alt: %+.1f°", altitude), 10, 10, dimColor);
+
+        // 对准某颗星时（夹角 < 2°），在星星的屏幕位置绘制跟随 tooltip
+        float threshold = (float) Math.cos(Math.toRadians(2.0));
+        if (nearestStar == null || bestDot <= threshold) return;
+
+        // 星星方向变换到世界空间
+        Quaternionf localToWorld = ReadStarClient.Observer.getLocalToWorldQuaternion();
+        Vector3f starWorldDir = new Quaternionf(localToWorld).transform(
+                new Vector3f(nearestStar.direction));
+
+        // 射线遮挡检测：玩家视线被地形/建筑挡住 → 不显示 tooltip
+        Vec3 eyePos = mc.player.getEyePosition(1.0f);
+        Vec3 rayEnd = eyePos.add(starWorldDir.x * 256, starWorldDir.y * 256, starWorldDir.z * 256);
+        net.minecraft.world.level.ClipContext ctx = new net.minecraft.world.level.ClipContext(
+                eyePos, rayEnd,
+                net.minecraft.world.level.ClipContext.Block.VISUAL,
+                net.minecraft.world.level.ClipContext.Fluid.NONE,
+                mc.player);
+        if (mc.level.clip(ctx).getType() != net.minecraft.world.phys.HitResult.Type.MISS) return;
+
+        // 摄像机基向量（世界坐标）
+        Vector3f forward = new Vector3f((float) worldLook.x, (float) worldLook.y, (float) worldLook.z);
+        Vec3 upVec = mc.player.getUpVector(1.0f);
+        Vector3f up = new Vector3f((float) upVec.x, (float) upVec.y, (float) upVec.z);
+        Vector3f right = new Vector3f(forward).cross(up).normalize();
+
+        // 角偏移
+        float dotF = starWorldDir.dot(forward);
+        if (dotF <= 0) return; // 在身后
+        float dotR = starWorldDir.dot(right);
+        float dotU = starWorldDir.dot(up);
+
+        // 映射到屏幕像素
+        Camera camera = mc.gameRenderer.getMainCamera();
+        float fov = camera.getFov();
+        int screenW = mc.getWindow().getGuiScaledWidth();
+        int screenH = mc.getWindow().getGuiScaledHeight();
+        float aspectRatio = (float) screenW / screenH;
+        float vFovRad = (float) Math.toRadians(fov);
+        float hFovRad = 2f * (float) Math.atan(Math.tan(vFovRad / 2) * aspectRatio);
+
+        float hAngle = (float) Math.atan2(dotR, dotF);
+        float vAngle = (float) Math.atan2(dotU, dotF);
+
+        int cx = screenW / 2;
+        int cy = screenH / 2;
+        int screenX = (int) (cx + hAngle / (hFovRad / 2f) * cx);
+        int screenY = (int) (cy - vAngle / (vFovRad / 2f) * cy);
+
+        // 在星星上方绘制 tooltip，避免遮挡
+        String tip = String.format("%s  %.1f", nearestStar.name, nearestStar.vmag);
+        int textW = font.width(tip);
+        int tipY = screenY - font.lineHeight - 5; // 星星上方
+        g.textWithBackdrop(font, Component.literal(tip),
+                screenX - textW / 2, tipY, textW, brightColor);
     }
 
     @Override

@@ -13,11 +13,11 @@ public class Config {
 
     public static final ModConfigSpec.DoubleValue STAR_CORE_SIZE = BUILDER
             .comment("Star core quad size multiplier (base size before brightness scaling). Default: 0.648")
-            .defineInRange("starCoreSize", 0.648, 0.01, 10.0);
+            .defineInRange("starCoreSize", 0.75, 0.01, 10.0);
 
     public static final ModConfigSpec.DoubleValue STAR_GLOW_SIZE = BUILDER
             .comment("Star glow quad size multiplier for bright stars (Vmag < 2.0). Default: 1.5")
-            .defineInRange("starGlowSize", 1.5, 0.01, 10.0);
+            .defineInRange("starGlowSize", 2, 0.01, 10.0);
 
     public static final ModConfigSpec.DoubleValue STAR_FOV_COMPENSATION_STRENGTH = BUILDER
             .comment("FOV compensation strength for star billboard size.\n"

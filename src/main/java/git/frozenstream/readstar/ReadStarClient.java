@@ -32,6 +32,7 @@ import net.neoforged.neoforge.client.event.ExtractLevelRenderStateEvent;
 import net.neoforged.neoforge.client.event.RegisterRenderPipelinesEvent;
 import net.neoforged.neoforge.client.event.RegisterSpriteSourcesEvent;
 import net.neoforged.neoforge.client.event.RegisterTextureAtlasesEvent;
+import net.neoforged.neoforge.client.event.RenderGuiEvent;
 import net.neoforged.neoforge.client.gui.ConfigurationScreen;
 import net.neoforged.neoforge.client.gui.IConfigScreenFactory;
 import net.neoforged.neoforge.data.event.GatherDataEvent;
@@ -121,17 +122,18 @@ public class ReadStarClient {
     @SubscribeEvent
     static void onExtractLevelRenderState(ExtractLevelRenderStateEvent event) {
         var level = event.getLevel();
-        var BlockPos = event.getCamera().blockPosition();
 
         // ==== 处理星光亮度 ====
-        var starBrightness = event.getRenderState().skyRenderState.starBrightness;
-        starBrightness = Math.min(1.0f, starBrightness * 5.f);
-        var lighting = level.getMaxLocalRawBrightness(BlockPos);
-        starBrightness = starBrightness * (1 - lighting / 20.f);
-        var fov = event.getCamera().getFov();
+        float starBrightness = event.getRenderState().skyRenderState.starBrightness;
+        // 有理函数映射 [0, ∞) → [0, 1): s·x/(s·x+1)
+        float s = 50.0f;
+        float newStarBrightness = (s * starBrightness) / (s * starBrightness + 1.0f);
+        float fov = event.getCamera().getFov();
         // FOV 缩小时提升亮度（星星更大但各项发光不变 → 需要更亮）
         double brightnessFactor = 1.0 + Config.STAR_FOV_BRIGHTNESS_STRENGTH.get() * Math.max(0.0, (70.0 - fov) / 70.0);
-        event.getRenderState().skyRenderState.starBrightness = starBrightness * (float)brightnessFactor;
+        newStarBrightness = newStarBrightness * (float)brightnessFactor; 
+        ReadStar.LOGGER.debug("Old brightness {}, New brightness: {}", starBrightness, newStarBrightness);
+        event.getRenderState().skyRenderState.starBrightness = newStarBrightness;
 
         // ==== 更新天体位姿 ====
         long gameTime = level.getGameTime();
@@ -219,5 +221,16 @@ public class ReadStarClient {
         // 仅注册单个 provider（Celestial provider 同时负责 star atlas），避免数据生成阶段 Duplicate
         // provider 错误
         event.createProvider(CelestialSpriteSourceProvider::new);
+    }
+
+    /**
+     * 委托给 ReadstarSkyRenderer 绘制天体坐标系指向 HUD。
+     */
+    @SubscribeEvent
+    static void onRenderGui(RenderGuiEvent.Post event) {
+        var renderer = skyboxRenderer.getSkyRenderer();
+        if (renderer != null) {
+            renderer.renderHud(event.getGuiGraphics());
+        }
     }
 }
