@@ -10,7 +10,6 @@ import com.mojang.blaze3d.vertex.VertexFormatElement;
 import git.frozenstream.readstar.elements.CelestialBodyManager;
 import git.frozenstream.readstar.elements.CelestialBody;
 import git.frozenstream.readstar.elements.MeteorCollector;
-import git.frozenstream.readstar.skybox.ReadStarCloudsRenderer;
 import git.frozenstream.readstar.skybox.ReadstarSkyboxRenderer;
 import git.frozenstream.readstar.sprite.CelestialSpriteSourceProvider;
 import git.frozenstream.readstar.sprite.StarSpriteSource;
@@ -44,9 +43,7 @@ import net.neoforged.neoforge.data.event.GatherDataEvent;
 @EventBusSubscriber(modid = ReadStar.MODID, value = Dist.CLIENT)
 public class ReadStarClient {
     // 静态保存天空渲染器实例，以便在多个地方使用
-    private static final ReadstarSkyboxRenderer skyboxRenderer = new ReadstarSkyboxRenderer();
-    /** 当前观测者（地球）的天体实例，由 skybox renderer 在每帧更新 */
-    public static CelestialBody Observer;
+    private static final ReadstarSkyboxRenderer skyboxRenderer = ReadstarSkyboxRenderer.getInstance();
 
     public static final Identifier CELESTIAL_ATLAS_TEXTURE = Identifier.fromNamespaceAndPath(ReadStar.MODID,
             "textures/atlas/celestial.png");
@@ -123,18 +120,6 @@ public class ReadStarClient {
     static void onExtractLevelRenderState(ExtractLevelRenderStateEvent event) {
         var level = event.getLevel();
 
-        // ==== 处理星光亮度 ====
-        float starBrightness = event.getRenderState().skyRenderState.starBrightness;
-        // 有理函数映射 [0, ∞) → [0, 1): s·x/(s·x+1)
-        float s = 50.0f;
-        float newStarBrightness = (s * starBrightness) / (s * starBrightness + 1.0f);
-        float fov = event.getCamera().getFov();
-        // FOV 缩小时提升亮度（星星更大但各项发光不变 → 需要更亮）
-        double brightnessFactor = 1.0 + Config.STAR_FOV_BRIGHTNESS_STRENGTH.get() * Math.max(0.0, (70.0 - fov) / 70.0);
-        newStarBrightness = newStarBrightness * (float)brightnessFactor; 
-        ReadStar.LOGGER.debug("Old brightness {}, New brightness: {}", starBrightness, newStarBrightness);
-        event.getRenderState().skyRenderState.starBrightness = newStarBrightness;
-
         // ==== 更新天体位姿 ====
         long gameTime = level.getGameTime();
         long daylightTime = level.getDefaultClockTime();
@@ -142,9 +127,10 @@ public class ReadStarClient {
 
         // ==== 设置观测者 ====
         if (level.dimension() == Level.OVERWORLD) {
+            event.getRenderState().customSkyboxRenderer = skyboxRenderer;
             CelestialBody observer = CelestialBodyManager.getInstance().getCelestialBody("earth");
             if (observer != null) {
-                Observer = observer;
+                skyboxRenderer.setObserver(observer);
                 observer.updateCurrentVec(daylightTime);
             }
         }
@@ -152,7 +138,7 @@ public class ReadStarClient {
         // ==== 处理 skycolor + 日食检测 ====
         int skyColor = event.getRenderState().skyRenderState.skyColor;
 
-        CelestialBody obs = ReadStarClient.Observer;
+        CelestialBody obs = skyboxRenderer.getObserver();
         if (obs != null && obs.hostStar != null) {
             Vector3f observerPos = obs.position;
             float hostSize = CelestialBodyManager.getApparentSize(observerPos, obs.hostStar) / 200.f;
@@ -203,11 +189,6 @@ public class ReadStarClient {
         // 设置 Collector 的当前维度（维度变化时会自动清空旧数据）
         MeteorCollector.getInstance().setCurrentDimension(level.dimension().identifier());
         MeteorCollector.getInstance().tick(gameTime);
-
-        if (level.dimension() == Level.OVERWORLD) {
-            event.getRenderState().customSkyboxRenderer = skyboxRenderer;
-            event.getRenderState().customCloudsRenderer = new ReadStarCloudsRenderer();
-        }
     }
 
     @SubscribeEvent
@@ -230,7 +211,7 @@ public class ReadStarClient {
     static void onRenderGui(RenderGuiEvent.Post event) {
         var renderer = skyboxRenderer.getSkyRenderer();
         if (renderer != null) {
-            renderer.renderHud(event.getGuiGraphics());
+            renderer.renderHud(event.getGuiGraphics(), skyboxRenderer.getObserver());
         }
     }
 }

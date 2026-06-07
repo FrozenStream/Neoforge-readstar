@@ -85,7 +85,7 @@ public class CelestialBody {
      * 局部坐标系 → 世界坐标系的旋转四元数，由 updateCurrentVec() 同步更新。
      * 基于 currentRotationVector (Y轴/天顶) 和 rotationAxis (Z轴/极轴) 构建标准正交基。
      */
-    private final Quaternionf localToWorldQuat = new Quaternionf();
+    public final Quaternionf localToWorldQuat = new Quaternionf();
 
     /**
      * 虚拟根节点，用于构建天体层级树的根

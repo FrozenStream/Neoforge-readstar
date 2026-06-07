@@ -51,7 +51,6 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
 
@@ -85,6 +84,8 @@ public class ReadstarSkyRenderer implements AutoCloseable {
             .getSequentialBuffer(VertexFormat.Mode.QUADS);
     private final AbstractTexture endSkyTexture;
     private int starIndexCount;
+    /** 最近一帧计算的有效星光亮度，供 renderHud 读取 */
+    private float lastStarBrightness;
 
     /**
      * 天球星表数据记录，存储从 stars.json 解析的原始星数据，可复用。
@@ -273,20 +274,29 @@ public class ReadstarSkyRenderer implements AutoCloseable {
     }
 
     /**
-     * 从 stars.json 解析星表数据，返回不可变列表。
+     * 扫描 stars/ 目录下所有 .json 文件，合并解析星表数据，返回不可变列表。
      */
     private static List<Star> parseStars(ResourceManager resourceManager) {
-        Identifier starsDataPath = Identifier.fromNamespaceAndPath(ReadStar.MODID, "custom/stars/stars.json");
         List<Star> result = new ArrayList<>();
 
-        try {
-            Optional<Resource> resourceOpt = resourceManager.getResource(starsDataPath);
-            if (resourceOpt.isPresent()) {
-                JsonArray starsArray;
-                try (InputStreamReader reader = new InputStreamReader(resourceOpt.get().open(),
-                        StandardCharsets.UTF_8)) {
-                    starsArray = JsonParser.parseReader(reader).getAsJsonObject().getAsJsonArray("Stars");
+        Map<Identifier, Resource> starResources = resourceManager.listResources(
+                "stars", id -> id.getPath().endsWith(".json"));
+
+        if (starResources.isEmpty()) {
+            ReadStar.LOGGER.warn("No star data files found in stars/");
+            return List.of();
+        }
+
+        for (Map.Entry<Identifier, Resource> entry : starResources.entrySet()) {
+            Identifier resPath = entry.getKey();
+            try (InputStreamReader reader = new InputStreamReader(entry.getValue().open(),
+                    StandardCharsets.UTF_8)) {
+                JsonArray starsArray = JsonParser.parseReader(reader).getAsJsonObject().getAsJsonArray("Stars");
+                if (starsArray == null) {
+                    ReadStar.LOGGER.warn("No 'Stars' array in: {}", resPath);
+                    continue;
                 }
+                int before = result.size();
                 for (int i = 0; i < starsArray.size(); i++) {
                     JsonObject obj = starsArray.get(i).getAsJsonObject();
                     JsonArray pos = obj.getAsJsonArray("position");
@@ -298,14 +308,13 @@ public class ReadstarSkyRenderer implements AutoCloseable {
                     int color = obj.get("color").getAsInt();
                     result.add(new Star(name, new Vector3f(px, py, pz).normalize(), vmag, color));
                 }
-                ReadStar.LOGGER.info("Parsed {} stars from {}", result.size(), starsDataPath);
-            } else {
-                ReadStar.LOGGER.warn("Star data file not found: {}", starsDataPath);
+                ReadStar.LOGGER.info("Parsed {} stars from {}", result.size() - before, resPath);
+            } catch (Exception e) {
+                ReadStar.LOGGER.error("Failed to load star data from {}: {}", resPath, e.getMessage());
             }
-        } catch (Exception e) {
-            ReadStar.LOGGER.error("Failed to load star data from {}: {}", starsDataPath, e.getMessage());
         }
 
+        ReadStar.LOGGER.info("Total parsed {} stars from {} file(s)", result.size(), starResources.size());
         return List.copyOf(result);
     }
 
@@ -360,11 +369,11 @@ public class ReadstarSkyRenderer implements AutoCloseable {
                     Vector3f center = new Vector3f(star.direction).normalize(100.0F);
 
                     // 逐星亮度：alpha 从 vmag>3 衰减，RGB 从 vmag>1 衰减
-                    float alphaF = Math.max(1.0f - Math.max(0.0f, vmag - 3.0f) / 15.0f, 0.5f);
-                    float colorF = Math.max(1.0f - Math.max(0.0f, vmag - 1.0f) / 20.0f, 0.5f);
+                    float alphaF = Math.max(1.0f - Math.max(0.0f, vmag - 0.0f) / 10.0f, 0.5f);
+                    float colorF = Math.max(1.0f - Math.max(0.0f, vmag - 1.0f) / 7.0f, 0.2f);
                     int starAlpha = (int) (alphaF * 255.0f);
                     int starColor = (int) (colorF * 255.0f);
-                    float starSize = Math.max(1.0f - Math.max(0.0f, vmag - 1.0f) / 15.0f, 0.5f) * coreSize;
+                    float starSize = Math.max(1.0f - Math.max(0.0f, vmag - 1.0f) / 10.0f, 0.5f) * coreSize;
 
                     // ---- 核心 quad（所有星）：4 顶点共享 center，Offset 区分角落 ----
                     Identifier coreId = Identifier.fromNamespaceAndPath(ReadStar.MODID, "environment/stars/color_" + color);
@@ -550,9 +559,19 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         modelViewStack.popMatrix();
     }
 
-    public void renderSunMoonAndStars(PoseStack poseStack, float rainBrightness, float starBrightness) {
+    public void renderSunMoonAndStars(PoseStack poseStack, float rainBrightness, float starBrightness, CelestialBody observer) {
         CelestialBodyManager manager = CelestialBodyManager.getInstance();
         poseStack.pushPose();
+
+        // ==== 计算有效星光亮度 ====
+        // 有理函数映射 [0, ∞) → [0, 1): s·x/(s·x+1)
+        float s = 20.0f;
+        float effectiveBrightness = (s * starBrightness) / (s * starBrightness + 1.0f);
+        float fov = Minecraft.getInstance().gameRenderer.getMainCamera().getFov();
+        // FOV 缩小时提升亮度（星星更大但各项发光不变 → 需要更亮）
+        double brightnessFactor = 1.0 + Config.STAR_FOV_BRIGHTNESS_STRENGTH.get() * Math.max(0.0, (70.0 - fov) / 70.0);
+        effectiveBrightness = effectiveBrightness * (float)brightnessFactor;
+        this.lastStarBrightness = effectiveBrightness;
 
         // ===== 整体天球框架旋转（先确定世界坐标 → 再整体旋转） =====
         // Y = currentRotationVector (观测者天顶方向) → 标准 Y(0,1,0) 映射至此
@@ -561,9 +580,9 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         boolean hasFrame = false;
         Vector3f observerPos = null;
 
-        if (ReadStarClient.Observer != null) {
-            observerPos = ReadStarClient.Observer.position;
-            Quaternionf frameQuat = ReadStarClient.Observer.getLocalToWorldQuaternion();
+        if (observer != null) {
+            observerPos = observer.position;
+            Quaternionf frameQuat = observer.getLocalToWorldQuaternion();
             poseStack.mulPose(frameQuat);
             hasFrame = true;
         }
@@ -607,8 +626,8 @@ public class ReadstarSkyRenderer implements AutoCloseable {
             //   4. 找到则用 renderBody() 渲染，与 renderMoon() 相同的管线并复用 computeMoonPhase
             for (CelestialBody body : manager.getCelestialBodyTreeMap()) {
                 // 排除已单独渲染的对象
-                if (body == ReadStarClient.Observer) continue;
-                if (body == ReadStarClient.Observer.hostStar) continue;
+                if (body == observer) continue;
+                if (body == observer.hostStar) continue;
                 if (moonBody != null && body == moonBody) continue;
                 if (body.hostStar == null) continue;
 
@@ -629,8 +648,8 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         }
 
         // ===== STARS (世界坐标已固定，被 frameQuat 整体旋转) =====
-        if (starBrightness > 0.0F) {
-            this.renderStars(starBrightness, poseStack);
+        if (effectiveBrightness > 0.0F) {
+            this.renderStars(effectiveBrightness, poseStack);
         }
 
         poseStack.popPose();
@@ -1016,20 +1035,20 @@ public class ReadstarSkyRenderer implements AutoCloseable {
      * 在望远镜视角下，于左上角显示高度角，并在对准的恒星位置跟随渲染 tooltip。
      * 由 ReadStarClient.onRenderGui 每帧调用。
      */
-    public void renderHud(GuiGraphicsExtractor g) {
+    public void renderHud(GuiGraphicsExtractor g, CelestialBody observer) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null || mc.options.hideGui) return;
         if (!mc.player.isScoping()) return; // 仅在使用望远镜时显示
-        if (ReadStarClient.Observer == null) return;
+        if (observer == null) return;
 
         // 获取玩家视线方向（世界坐标）→ 逆变换到天体局部坐标
         Vec3 worldLook = mc.player.getViewVector(1.0f);
-        Quaternionf invQuat = new Quaternionf(ReadStarClient.Observer.getLocalToWorldQuaternion()).conjugate();
+        Quaternionf invQuat = new Quaternionf(observer.getLocalToWorldQuaternion()).conjugate();
         Vector3f celestialDir = invQuat.transform(
                 new Vector3f((float) worldLook.x, (float) worldLook.y, (float) worldLook.z));
 
-        // 视线在地平面以下 → 跳过
-        if (worldLook.y <= 0) return;
+        // 星光不够亮 → 跳过
+        if (this.lastStarBrightness < 0.15f) return;
 
         // 查找视线最近的恒星
         Star nearestStar = null;
@@ -1055,7 +1074,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         if (nearestStar == null || bestDot <= threshold) return;
 
         // 星星方向变换到世界空间
-        Quaternionf localToWorld = ReadStarClient.Observer.getLocalToWorldQuaternion();
+        Quaternionf localToWorld = observer.getLocalToWorldQuaternion();
         Vector3f starWorldDir = new Quaternionf(localToWorld).transform(
                 new Vector3f(nearestStar.direction));
 
