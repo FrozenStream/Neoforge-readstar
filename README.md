@@ -1,9 +1,11 @@
 # ReadStar — NeoForge 26.1 天文模组
 
+![夜空星表预览](imgs/Stars_at_night.png)
+
 ## Mod 特色
 
+- **真实星表** — 基于 Gaia DR3（颜色） + BSC5（亮星回退）的 12,000+ 颗真实恒星，逐星独立亮度与光晕
 - **真实天体力学** — 基于开普勒轨道方程的行星系统，支持任意深度嵌套
-- **真实星表** — 从 Hipparcos 星表导入恒星数据，逐星独立亮度与光晕
 - **FOV 感知渲染** — 自定义着色器，FOV 变化时星星屏幕大小保持恒定
 - **零代码扩展** — 放置 PNG 即可为任意天体添加 8 种月相纹理
 - **服务端同步** — 天体配置由服务端统一管理，客户端自动同步
@@ -169,15 +171,28 @@
 
 **路径**: `assets/readstar/custom/stars/stars.json`
 
+#### 数据来源
+
+星表由 `.data/` 目录下脚本自动生成：
+
+| 脚本 | 数据源 | 输出 |
+|------|--------|------|
+| `generate_stars.py` | BSC5 亮星星表 | `stars_named.json` (361 IAU命名) + `stars_numbered.json` (8043 HR编号) |
+| `gaia_download.py` | Gaia Archive TAP API | `gaia_bright_with_teff.vot` (含有效温度) |
+| `gaia_to_stars.py` | Gaia DR3 + BSC5 回退 | `stars_gaia_named.json` (361 颗) + `stars_gaia_numbered.json` (11809 颗) |
+
+**颜色算法**：优先使用 Gaia GSP-Phot 有效温度 → Planckian 黑体辐射 → sRGB；无温度数据时回退到 bp_rp 色指数分段映射。最亮 12 颗星（天狼星、织女星等）因 Gaia 探测器饱和，保留 BSC5 数据。
+
+#### JSON 格式
+
 ```json
 {
   "Stars": [
     {
       "name": "Sirius",
-      "position": [-0.188181, -0.169608, 0.967338],
-      "type": 1,
+      "position": [-0.1875, -0.2876, 0.9392],
       "Vmag": -1.46,
-      "color": 4291815679
+      "color": 4294967295
     }
   ]
 }
@@ -186,9 +201,8 @@
 | 字段 | 说明 |
 |------|------|
 | `name` | 标识符（保留字段，无运行时作用） |
-| `position` | 单位球面方向 `[x,y,z]`，渲染时归一化到 100 距离 |
-| `type` | 保留字段，无运行时作用。数据中存在但不被代码读取 |
-| `Vmag` | 视星等。决定光晕等级和亮度衰减 |
+| `position` | 单位球面方向 `[x,y,z]`，渲染时归一化到 100 距离。Y=北天极 |
+| `Vmag` | 视星等（Gaia G 波段 或 BSC5 V 波段）。决定光晕等级和亮度衰减 |
 | `color` | ARGB 颜色值，作为图集精灵生成的 key |
 
 ---
