@@ -40,6 +40,12 @@ public class CelestialBody {
     public Vector3f rotationAxis;
 
     /**
+     * 是否为"不稳定的脏雪球"（彗星类天体）
+     * 彗星由冰、尘埃和岩石组成，轨道通常高度偏心，靠近恒星时会形成彗发和彗尾
+     */
+    public boolean unstableDirtySnowball;
+
+    /**
      * 天体的轨道参数，定义其围绕父天体的运动轨迹
      */
     public Orbit orbit;
@@ -90,19 +96,21 @@ public class CelestialBody {
     /**
      * 虚拟根节点，用于构建天体层级树的根
      */
-    public static CelestialBody Root = new CelestialBody("VOID", 0, 0, 0, null, null,  new ArrayList<>());
+    public static CelestialBody Root = new CelestialBody("VOID", 0, 0, 0, null, null, new ArrayList<>(), false);
 
     /**
      * 构造一个完整的天体
      *
-     * @param name         天体名称
-     * @param mass         天体质量（千克）
-     * @param radius       天体半径（米）
-     * @param luminance    自发光亮度（0-15）
-     * @param rotationAxis 自转轴方向向量（可为 null，默认为 (0, 0, -1)）
-     * @param orbit        轨道参数（定义围绕父天体的运动）
+     * @param name                   天体名称
+     * @param mass                   天体质量（千克）
+     * @param radius                 天体半径（米）
+     * @param luminance              自发光亮度（0-15）
+     * @param rotationAxis           自转轴方向向量（可为 null，默认为 (0, 0, -1)）
+     * @param orbit                  轨道参数（定义围绕父天体的运动）
+     * @param children               子天体列表
+     * @param unstableDirtySnowball  是否为"不稳定的脏雪球"（彗星类天体）
      */
-    public CelestialBody(String name, double mass, double radius, int luminance, Vector3f rotationAxis, Orbit orbit, ArrayList<CelestialBody>  children) {
+    public CelestialBody(String name, double mass, double radius, int luminance, Vector3f rotationAxis, Orbit orbit, ArrayList<CelestialBody> children, boolean unstableDirtySnowball) {
         this.name = name;
         this.mass = mass;
         this.radius = radius;
@@ -114,6 +122,7 @@ public class CelestialBody {
         this.orbit = orbit;
         this.parent = null;
         this.children = children;
+        this.unstableDirtySnowball = unstableDirtySnowball;
     }
 
     /**
@@ -208,5 +217,14 @@ public class CelestialBody {
         if (body == null || body == Root) return null;
         if (body.luminance > 0) return body;
         return findLuminousAncestor(body.parent);
+    }
+
+    /**
+     * 判断该天体是否为"不稳定的脏雪球"（彗星类天体）
+     *
+     * @return true 表示该天体为彗星类天体
+     */
+    public boolean isUnstableDirtySnowball() {
+        return unstableDirtySnowball;
     }
 }
