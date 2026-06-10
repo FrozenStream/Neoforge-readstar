@@ -559,7 +559,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         modelViewStack.popMatrix();
     }
 
-    public void renderSunMoonAndStars(PoseStack poseStack, float rainBrightness, float starBrightness, CelestialBody observer) {
+    public void renderSunMoonAndStars(PoseStack poseStack, float rainBrightness, float starBrightness, CelestialBody observer, long gameTime) {
         CelestialBodyManager manager = CelestialBodyManager.getInstance();
         poseStack.pushPose();
 
@@ -646,6 +646,9 @@ public class ReadstarSkyRenderer implements AutoCloseable {
                 }
             }
         }
+
+        // ---- COMETS（彗星尾部渲染） ----
+        renderComets(manager, observerPos, rainBrightness, poseStack, gameTime);
 
         // ===== STARS (世界坐标已固定，被 frameQuat 整体旋转) =====
         if (effectiveBrightness > 0.0F) {
@@ -889,6 +892,220 @@ public class ReadstarSkyRenderer implements AutoCloseable {
             renderPass.drawIndexed(baseVertex, 0, 6, 1);
         }
 
+        modelViewStack.popMatrix();
+    }
+    
+    private final float skyHeight = 100f;
+    private final double AU = 1.496e11;
+    // 尾部参数（所有彗星共享）
+    private int dustSamples = 50;
+    private float dustMaxDist = 0.6f * (float) AU;
+    private float dustCurv = 0.35f;
+    private float dustWobbleFreq = 0.06f, dustWaveFreq = 2.5f, dustWobbleAmp = 0.01f;
+
+    private int ionSamples = 80;
+    private float ionMaxDist = 1.0f * (float) AU;
+    private float ionCurv = 0.03f;
+    private float ionWobbleFreq = 0.14f, ionWaveFreq = 7.0f, ionWobbleAmp = 0.002f;
+    /**
+     * 遍历天体树，为所有 unstableDirtySnowball 彗星渲染尾部。
+     * 使用世界空间 Bézier 曲线投影到天球绘制。
+     */
+    private void renderComets(CelestialBodyManager manager, Vector3f observerPos, float rainBrightness, PoseStack poseStack, long gameTick) {
+        if (observerPos == null) return;
+
+        // ==== 遍历所有 unstableDirtySnowball 天体 ====
+        for (CelestialBody body : manager.getCelestialBodyTreeMap()) {
+            if (!body.unstableDirtySnowball) continue;
+            if (body.hostStar == null) continue;
+
+            Vector3f cometPos = body.position;
+            Vector3f sunPos = body.hostStar.position;
+            // 轨道法线：从倾角 i 和升交点经度 Ω 计算
+            double i = body.orbit.inclination();
+            double omega = body.orbit.longitudeOfAscendingNode();
+            Vector3f orbitNormal = new Vector3f(
+                (float)(Math.sin(omega) * Math.sin(i)),
+                (float)(-Math.cos(omega) * Math.sin(i)),
+                (float)Math.cos(i)
+            );
+            renderOneComet(cometPos, sunPos, orbitNormal, observerPos, rainBrightness, poseStack, gameTick);
+        }
+
+        // ==== 测试彗星：太阳侧面近日点，确保可见 ====
+        {
+            Vector3f testComet = new Vector3f(0, 1.5e11f, 1.5e11f);
+            Vector3f testSun = new Vector3f(0, 0, 0);
+            Vector3f testOrbitNormal = new Vector3f(0, 1, 0);  // 默认轨道法线
+            renderOneComet(testComet, testSun, testOrbitNormal, observerPos, rainBrightness, poseStack, gameTick);
+        }
+    }
+
+    /** 为单颗彗星渲染尘埃尾 + 离子尾 + 标记 */
+    private void renderOneComet(Vector3f cometPos, Vector3f sunPos, Vector3f orbitNormal, Vector3f observerPos,
+            float rainBrightness, PoseStack poseStack, long tick) {
+
+        Vector3f antiSun = new Vector3f(cometPos).sub(sunPos).normalize();
+        // 尾巴弯曲方向在轨道平面内：antiSun × orbitNormal
+        Vector3f rightDir = new Vector3f(antiSun).cross(orbitNormal);
+        if (rightDir.lengthSquared() < 0.0001f) rightDir.set(orbitNormal).cross(antiSun).normalize();
+        else rightDir.normalize();
+
+        Vector3f wobbleDir = new Vector3f(antiSun).cross(rightDir).normalize();
+
+        // ---- 尘埃尾主面 + 垂直鳍 ----
+        buildTailRibbon("Dust tail", dustSamples, dustMaxDist, dustCurv,
+                dustWobbleFreq, dustWaveFreq, dustWobbleAmp, false, 0f,
+                0.25f, 5.0f, true, 10f, 200,
+                0.92f, 0.85f, 0.75f, 0.25f, 0.40f, 0.80f,
+                antiSun, rightDir, wobbleDir, cometPos, observerPos, tick, rainBrightness, poseStack);
+        buildTailRibbon("Dust tail fin", dustSamples, dustMaxDist, dustCurv,
+                dustWobbleFreq, dustWaveFreq, dustWobbleAmp, true, 0.35f,
+                0.25f, 5.0f, true, 10f, 140,
+                0.92f, 0.85f, 0.75f, 0.25f, 0.40f, 0.80f,
+                antiSun, rightDir, wobbleDir, cometPos, observerPos, tick, rainBrightness, poseStack);
+
+        // ---- 离子尾主面 + 垂直鳍 ----
+        buildTailRibbon("Ion tail", ionSamples, ionMaxDist, ionCurv,
+                ionWobbleFreq, ionWaveFreq, ionWobbleAmp, false, 0f,
+                0.06f, 0.8f, false, 3f, 160,
+                0.40f, 0.60f, 0.95f, 0.20f, 0.30f, 0.50f,
+                antiSun, rightDir, wobbleDir, cometPos, observerPos, tick, rainBrightness, poseStack);
+        buildTailRibbon("Ion tail fin", ionSamples, ionMaxDist, ionCurv,
+                ionWobbleFreq, ionWaveFreq, ionWobbleAmp, true, 0.30f,
+                0.06f, 0.8f, false, 3f, 100,
+                0.40f, 0.60f, 0.95f, 0.20f, 0.30f, 0.50f,
+                antiSun, rightDir, wobbleDir, cometPos, observerPos, tick, rainBrightness, poseStack);
+
+        // ---- 彗星位置白色标记 ----
+        Vector3f cometSkyDir = new Vector3f(cometPos).sub(observerPos).normalize().mul(skyHeight);
+        Vector3f upRef = new Vector3f(0, 1, 0);
+        Vector3f tangent1 = new Vector3f(cometSkyDir).cross(upRef);
+        if (tangent1.lengthSquared() < 0.0001f) tangent1.set(1, 0, 0).cross(cometSkyDir);
+        float tangent1Length = 0.2f;
+        tangent1.normalize().mul(tangent1Length);
+        Vector3f tangent2 = new Vector3f(cometSkyDir).cross(tangent1).normalize().mul(tangent1Length);
+
+        int white = ARGB.color(255, 255, 255, 255);
+        int markerVerts = 4;
+        try (ByteBufferBuilder bb = ByteBufferBuilder.exactlySized(
+                markerVerts * DefaultVertexFormat.POSITION_COLOR.getVertexSize())) {
+            BufferBuilder buf = new BufferBuilder(bb, VertexFormat.Mode.TRIANGLE_STRIP,
+                    DefaultVertexFormat.POSITION_COLOR);
+            buf.addVertex(cometSkyDir.x + tangent1.x + tangent2.x,
+                          cometSkyDir.y + tangent1.y + tangent2.y,
+                          cometSkyDir.z + tangent1.z + tangent2.z).setColor(white);
+            buf.addVertex(cometSkyDir.x + tangent1.x - tangent2.x,
+                          cometSkyDir.y + tangent1.y - tangent2.y,
+                          cometSkyDir.z + tangent1.z - tangent2.z).setColor(white);
+            buf.addVertex(cometSkyDir.x - tangent1.x + tangent2.x,
+                          cometSkyDir.y - tangent1.y + tangent2.y,
+                          cometSkyDir.z - tangent1.z + tangent2.z).setColor(white);
+            buf.addVertex(cometSkyDir.x - tangent1.x - tangent2.x,
+                          cometSkyDir.y - tangent1.y - tangent2.y,
+                          cometSkyDir.z - tangent1.z - tangent2.z).setColor(white);
+            try (MeshData mesh = buf.buildOrThrow()) {
+                GpuBuffer buffer = RenderSystem.getDevice().createBuffer(() -> "Comet marker", 32, mesh.vertexBuffer());
+                renderTailPass(buffer, markerVerts, "Comet marker", rainBrightness, poseStack);
+                buffer.close();
+            }
+        }
+    }
+
+    /**
+     * 构建一条彗尾 ribbon（TRIANGLE_STRIP）：Bézier → 天球投影 → 顶点缓冲 → 渲染。
+     * isFin=true 时沿 dir×sideways 方向（垂直鳍），否则沿 sideways 方向（主平面）。
+     * 宽度公式：hwA + (hwQuadratic ? t² : t) × hwB，鳍再乘以 finMult。
+     * 颜色：fade=exp(-t²×fadeExp)，中心色→边缘色 lerp，alpha=fade×alphaMax。
+     */
+    private void buildTailRibbon(String label, int samples,
+            float maxDist, float curv,
+            float wobFreq, float wavFreq, float wobAmp,
+            boolean isFin, float finMult,
+            float hwA, float hwB, boolean hwQuadratic,
+            float fadeExp, int alphaMax,
+            float rC, float gC, float bC, float rE, float gE, float bE,
+            Vector3f antiSun, Vector3f rightDir, Vector3f wobbleDir,
+            Vector3f cometPos, Vector3f observerPos,
+            long tick, float rainBrightness, PoseStack poseStack) {
+
+        int verts = (samples + 1) * 2;
+        try (ByteBufferBuilder bb = ByteBufferBuilder.exactlySized(
+                verts * DefaultVertexFormat.POSITION_COLOR.getVertexSize())) {
+            BufferBuilder buf = new BufferBuilder(bb, VertexFormat.Mode.TRIANGLE_STRIP,
+                    DefaultVertexFormat.POSITION_COLOR);
+            for (int k = 0; k <= samples; k++) {
+                float t = (float) k / samples;
+                float d = t * maxDist;
+                float curveOff = curv * t * t * maxDist;
+                float wobble = (float) Math.sin(tick * wobFreq + t * wavFreq * Math.PI * 2) * wobAmp * d;
+                Vector3f worldPt = new Vector3f(antiSun).mul(d)
+                        .add(rightDir.x * curveOff, rightDir.y * curveOff, rightDir.z * curveOff)
+                        .add(wobbleDir.x * wobble, wobbleDir.y * wobble, wobbleDir.z * wobble)
+                        .add(cometPos);
+                Vector3f dir = new Vector3f(worldPt).sub(observerPos).normalize();
+
+                // 横向偏移方向
+                Vector3f sideways = new Vector3f(rightDir);
+                float dot = sideways.dot(dir);
+                sideways.sub(dir.x * dot, dir.y * dot, dir.z * dot);
+                if (sideways.lengthSquared() < 0.0001f) {
+                    sideways.set(dir).cross(1, 0, 0);
+                    if (sideways.lengthSquared() < 0.0001f) sideways.set(0, 1, 0).cross(dir);
+                }
+                sideways.normalize();
+
+                float halfWidth = hwA + (hwQuadratic ? t * t : t) * hwB;
+                if (isFin) halfWidth *= finMult;
+
+                Vector3f offsetDir;
+                if (isFin) {
+                    offsetDir = new Vector3f(dir).cross(sideways).normalize(); // 垂直鳍
+                } else {
+                    offsetDir = sideways; // 主平面
+                }
+
+                float fade = (float) Math.exp(-t * t * fadeExp);
+                int alpha = (int)(fade * alphaMax);
+                int r = (int)((rC * fade + rE * (1f - fade)) * 255);
+                int g = (int)((gC * fade + gE * (1f - fade)) * 255);
+                int b = (int)((bC * fade + bE * (1f - fade)) * 255);
+                int color = ARGB.color(alpha, r, g, b);
+
+                float cx = dir.x * skyHeight, cy = dir.y * skyHeight, cz = dir.z * skyHeight;
+                float ox = offsetDir.x * halfWidth, oy = offsetDir.y * halfWidth, oz = offsetDir.z * halfWidth;
+                buf.addVertex(cx + ox, cy + oy, cz + oz).setColor(color);
+                buf.addVertex(cx - ox, cy - oy, cz - oz).setColor(color);
+            }
+            try (MeshData mesh = buf.buildOrThrow()) {
+                GpuBuffer buffer = RenderSystem.getDevice().createBuffer(() -> label, 32, mesh.vertexBuffer());
+                renderTailPass(buffer, verts, label, rainBrightness, poseStack);
+                buffer.close();
+            }
+        }
+    }
+
+    /** 彗尾渲染 pass */
+    private void renderTailPass(GpuBuffer buffer, int totalVerts, String label, float rainBrightness, PoseStack poseStack) {
+        Matrix4fStack modelViewStack = RenderSystem.getModelViewStack();
+        modelViewStack.pushMatrix();
+        modelViewStack.mul(poseStack.last().pose());
+        GpuBufferSlice dynamicTransforms = RenderSystem.getDynamicUniforms()
+                .writeTransform(modelViewStack,
+                        new Vector4f(1, 1, 1, 1),
+                        new Vector3f(), new Matrix4f());
+        GpuTextureView color = Minecraft.getInstance().getMainRenderTarget().getColorTextureView();
+        GpuTextureView depth = Minecraft.getInstance().getMainRenderTarget().getDepthTextureView();
+
+        try (RenderPass renderPass = RenderSystem.getDevice()
+                .createCommandEncoder()
+                .createRenderPass(() -> label, color, OptionalInt.empty(), depth, OptionalDouble.empty())) {
+            renderPass.setPipeline(ReadStarClient.COMET_TAIL_PIPELINE);
+            RenderSystem.bindDefaultUniforms(renderPass);
+            renderPass.setUniform("DynamicTransforms", dynamicTransforms);
+            renderPass.setVertexBuffer(0, buffer);
+            renderPass.draw(0, totalVerts);
+        }
         modelViewStack.popMatrix();
     }
 

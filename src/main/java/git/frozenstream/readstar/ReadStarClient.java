@@ -3,6 +3,7 @@ package git.frozenstream.readstar;
 import com.mojang.blaze3d.pipeline.BlendFunction;
 import com.mojang.blaze3d.pipeline.ColorTargetState;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
+import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.VertexFormat;
 import com.mojang.blaze3d.vertex.VertexFormat.Mode;
 import com.mojang.blaze3d.vertex.VertexFormatElement;
@@ -70,6 +71,12 @@ public class ReadStarClient {
             .add("Offset", OFFSET_ELEMENT)
             .build();
 
+    /**
+     * 自定义管线：彗尾测试渲染，使用 TRIANGLE_STRIP + 半透明混合。
+     * 与 SUNRISE_SUNSET 类似但使用 TRIANGLE_STRIP 模式，适合带状几何体。
+     */
+    public static RenderPipeline COMET_TAIL_PIPELINE;
+
     @SubscribeEvent
     static void onRegisterStarPipelines(RegisterRenderPipelinesEvent event) {
         // 自定义管线：使用 star_fov shader（分离 center + billboard offset），
@@ -85,6 +92,18 @@ public class ReadStarClient {
                 .build();
         event.registerPipeline(STAR_TEXTURED_PIPELINE);
         ReadStar.LOGGER.info("Registered custom star pipeline: readstar:star_textured (fov-aware)");
+
+        // 彗尾测试管线：TRIANGLE_STRIP + POSITION_COLOR
+        COMET_TAIL_PIPELINE = RenderPipeline
+                .builder(new RenderPipeline.Snippet[] { RenderPipelines.MATRICES_PROJECTION_SNIPPET })
+                .withLocation(Identifier.fromNamespaceAndPath(ReadStar.MODID, "pipeline/comet_tail"))
+                .withVertexShader(Identifier.fromNamespaceAndPath("minecraft", "core/position_color"))
+                .withFragmentShader(Identifier.fromNamespaceAndPath("minecraft", "core/position_color"))
+                .withColorTargetState(new ColorTargetState(BlendFunction.TRANSLUCENT))
+                .withVertexFormat(DefaultVertexFormat.POSITION_COLOR, Mode.TRIANGLE_STRIP)
+                .build();
+        event.registerPipeline(COMET_TAIL_PIPELINE);
+        ReadStar.LOGGER.info("Registered custom comet tail pipeline: readstar:pipeline/comet_tail");
     }
 
     public ReadStarClient(ModContainer container) {
