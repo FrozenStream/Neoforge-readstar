@@ -18,7 +18,8 @@ public class CelestialSpriteSourceProvider extends SpriteSourceProvider {
     protected void gather() {
         atlas(ReadStarClient.CELESTIAL_ATLAS_INFO)
                 .addSource(new DirectoryLister("environment/celestial", "environment/celestial/"))
-                .addSource(new MoonSpriteSource());
+                .addSource(new MoonSpriteSource())
+                .addSource(new SunSpriteSource());
 
         atlas(ReadStarClient.STAR_ATLAS_INFO)
                 .addSource(new StarSpriteSource());

@@ -7,6 +7,9 @@
     },
     {
       "type": "readstar:moon_crop"
+    },
+    {
+      "type": "readstar:sun"
     }
   ]
 }

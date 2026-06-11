@@ -54,20 +54,22 @@ import java.util.Map;
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
 
+
 public class ReadstarSkyRenderer implements AutoCloseable {
-    private static final Identifier SUN_SPRITE = Identifier.fromNamespaceAndPath("minecraft", "environment/celestial/sun");
+    // ⚠️ DO NOT REMOVE: 以下注释掉的常量是原版参考值，保留以供对比和维护参考
+    // private static final Identifier SUN_SPRITE = Identifier.fromNamespaceAndPath("minecraft", "environment/celestial/sun");
     private static final Identifier END_FLASH_SPRITE = Identifier.fromNamespaceAndPath("minecraft", "environment/celestial/end_flash");
     private static final Identifier END_SKY_LOCATION = Identifier.withDefaultNamespace("textures/environment/end_sky.png");
-    private static final float SKY_DISC_RADIUS = 512.0F;
-    private static final int SKY_VERTICES = 10;
-    private static final float SUN_SIZE = 30.0F;
-    private static final float SUN_HEIGHT = 100.0F;
-    private static final float MOON_SIZE = 20.0F;
-    private static final float MOON_HEIGHT = 100.0F;
-    private static final int SUNRISE_STEPS = 16;
-    private static final int END_SKY_QUAD_COUNT = 6;
-    private static final float END_FLASH_HEIGHT = 100.0F;
-    private static final float END_FLASH_SCALE = 60.0F;
+    // private static final float SKY_DISC_RADIUS = 512.0F;
+    // private static final int SKY_VERTICES = 10;
+    // private static final float SUN_SIZE = 30.0F;
+    // private static final float SUN_HEIGHT = 100.0F;
+    // private static final float MOON_SIZE = 20.0F;
+    // private static final float MOON_HEIGHT = 100.0F;
+    // private static final int SUNRISE_STEPS = 16;
+    // private static final int END_SKY_QUAD_COUNT = 6;
+    // private static final float END_FLASH_HEIGHT = 100.0F;
+    // private static final float END_FLASH_SCALE = 60.0F;
     private final TextureAtlas celestialsAtlas;
     private final TextureAtlas starsAtlas;
     private final List<Star> stars;
@@ -75,8 +77,9 @@ public class ReadstarSkyRenderer implements AutoCloseable {
     private final GpuBuffer topSkyBuffer;
     private final GpuBuffer bottomSkyBuffer;
     private final GpuBuffer endSkyBuffer;
-    private final GpuBuffer sunBuffer;
-    private final Map<String, GpuBuffer> NonluminousBuffers = new HashMap<>();
+    // private final GpuBuffer sunBuffer;
+    private final Map<String, GpuBuffer> nonluminousBuffers = new HashMap<>();
+    private final Map<String, GpuBuffer> luminousBuffers = new HashMap<>();
     private final GpuBuffer sunriseBuffer;
     private final GpuBuffer endFlashBuffer;
     private final RenderSystem.AutoStorageIndexBuffer quadIndices = RenderSystem
@@ -103,7 +106,6 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         this.endSkyBuffer = buildEndSky();
         this.endSkyTexture = this.getTexture(textureManager, END_SKY_LOCATION);
         this.endFlashBuffer = buildEndFlashQuad(this.celestialsAtlas);
-        this.sunBuffer = buildSunQuad(this.celestialsAtlas);
         this.sunriseBuffer = this.buildSunriseFan();
 
         try (ByteBufferBuilder builder = ByteBufferBuilder.exactlySized(10 * DefaultVertexFormat.POSITION.getVertexSize())) {
@@ -124,45 +126,81 @@ public class ReadstarSkyRenderer implements AutoCloseable {
     }
 
     /**
-     * 按天体名称懒创建 GPU 缓冲。首次渲染某天体时，从图集中查找
-     * environment/celestial/non-luminous/{bodyName}/{phaseName} 精灵并构建缓冲。
-     * 之后直接返回缓存。若图集中无对应精灵则返回 null。
+     * 按天体名称懒创建 non-luminous GPU 缓冲（月相天体：moon、mars 等）。
+     * 精灵路径：environment/celestial/non-luminous/{bodyName}/{phaseName}
      */
     private GpuBuffer getOrCreateNonluminousBuffer(String bodyName) {
-        return NonluminousBuffers.computeIfAbsent(bodyName, name -> {
-            MoonPhase[] phases = MoonPhase.values();
-            VertexFormat format = DefaultVertexFormat.POSITION_TEX;
+        return nonluminousBuffers.computeIfAbsent(bodyName,
+                name -> buildBodyBuffer(name, "non-luminous"));
+    }
 
-            List<TextureAtlasSprite> sprites = new ArrayList<>();
-            for (MoonPhase phase : phases) {
-                String tmpname = "environment/celestial/non-luminous/" + name + "/" + phase.getSerializedName();
-                Identifier spriteId = Identifier.fromNamespaceAndPath(ReadStar.MODID, tmpname);
-                TextureAtlasSprite sprite = celestialsAtlas.getSprite(spriteId);
-                if (sprite != celestialsAtlas.missingSprite()) {
-                    sprites.add(sprite);
-                }
-            }
+    /**
+     * 按天体名称懒创建 luminous GPU 缓冲（发光天体：sun 等）。
+     * 精灵路径：environment/celestial/luminous/{bodyName}/{phaseName}
+     */
+    private GpuBuffer getOrCreateLuminousBuffer(String bodyName) {
+        return luminousBuffers.computeIfAbsent(bodyName,
+                this::buildLuminousBuffer);
+    }
 
-            if (sprites.isEmpty()) {
-                return null;
-            }
+    /**
+     * 构建 luminous 天体缓冲（单个精灵，无月相）。
+     * 精灵路径：environment/celestial/luminous/{name}
+     */
+    private GpuBuffer buildLuminousBuffer(String name) {
+        Identifier spriteId = Identifier.fromNamespaceAndPath(ReadStar.MODID,
+                "environment/celestial/luminous/" + name);
+        TextureAtlasSprite sprite = celestialsAtlas.getSprite(spriteId);
+        if (sprite == celestialsAtlas.missingSprite()) {
+            ReadStar.LOGGER.warn("Luminous sprite not found: {}", spriteId);
+            return null;
+        }
+        return buildQuadBuffer(name, "luminous", List.of(sprite));
+    }
 
-            int totalBytes = sprites.size() * 4 * format.getVertexSize();
-            try (ByteBufferBuilder bb = ByteBufferBuilder.exactlySized(totalBytes)) {
-                BufferBuilder buf = new BufferBuilder(bb, VertexFormat.Mode.QUADS, format);
-                for (TextureAtlasSprite sprite : sprites) {
-                    buf.addVertex(-1.0F, 0.0F, -1.0F).setUv(sprite.getU1(), sprite.getV1());
-                    buf.addVertex(1.0F, 0.0F, -1.0F).setUv(sprite.getU0(), sprite.getV1());
-                    buf.addVertex(1.0F, 0.0F, 1.0F).setUv(sprite.getU0(), sprite.getV0());
-                    buf.addVertex(-1.0F, 0.0F, 1.0F).setUv(sprite.getU1(), sprite.getV0());
-                }
-                try (MeshData mesh = buf.buildOrThrow()) {
-                    ReadStar.LOGGER.info("Built buffer for '{}': {} sprites", name, sprites.size());
-                    return RenderSystem.getDevice().createBuffer(
-                            () -> "Body/" + name + " buffer", 32, mesh.vertexBuffer());
-                }
+    /**
+     * 构建 non-luminous 天体缓冲（遍历 8 个月相）。
+     * 精灵路径：environment/celestial/non-luminous/{name}/{phaseName}
+     */
+    private GpuBuffer buildBodyBuffer(String name, String category) {
+        MoonPhase[] phases = MoonPhase.values();
+        VertexFormat format = DefaultVertexFormat.POSITION_TEX;
+
+        List<TextureAtlasSprite> sprites = new ArrayList<>();
+        for (MoonPhase phase : phases) {
+            Identifier spriteId = Identifier.fromNamespaceAndPath(ReadStar.MODID,
+                    "environment/celestial/" + category + "/" + name + "/" + phase.getSerializedName());
+            TextureAtlasSprite sprite = celestialsAtlas.getSprite(spriteId);
+            if (sprite != celestialsAtlas.missingSprite()) {
+                sprites.add(sprite);
             }
-        });
+        }
+
+        if (sprites.isEmpty()) {
+            return null;
+        }
+
+        return buildQuadBuffer(name, category, sprites);
+    }
+
+    /** 用精灵列表构建 QUAD 的 GPU 缓冲 */
+    private GpuBuffer buildQuadBuffer(String name, String category, List<TextureAtlasSprite> sprites) {
+        VertexFormat format = DefaultVertexFormat.POSITION_TEX;
+        int totalBytes = sprites.size() * 4 * format.getVertexSize();
+        try (ByteBufferBuilder bb = ByteBufferBuilder.exactlySized(totalBytes)) {
+            BufferBuilder buf = new BufferBuilder(bb, VertexFormat.Mode.QUADS, format);
+            for (TextureAtlasSprite sprite : sprites) {
+                buf.addVertex(-1.0F, 0.0F, -1.0F).setUv(sprite.getU1(), sprite.getV1());
+                buf.addVertex(1.0F, 0.0F, -1.0F).setUv(sprite.getU0(), sprite.getV1());
+                buf.addVertex(1.0F, 0.0F, 1.0F).setUv(sprite.getU0(), sprite.getV0());
+                buf.addVertex(-1.0F, 0.0F, 1.0F).setUv(sprite.getU1(), sprite.getV0());
+            }
+            try (MeshData mesh = buf.buildOrThrow()) {
+                ReadStar.LOGGER.info("Built {} buffer for '{}': {} sprites", category, name, sprites.size());
+                return RenderSystem.getDevice().createBuffer(
+                        () -> "Body/" + name + " (" + category + ") buffer", 32, mesh.vertexBuffer());
+            }
+        }
     }
 
     private AbstractTexture getTexture(TextureManager textureManager, Identifier location) {
@@ -193,10 +231,6 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         }
 
         return var16;
-    }
-
-    private static GpuBuffer buildSunQuad(TextureAtlas atlas) {
-        return buildCelestialQuad("Sun quad", atlas.getSprite(SUN_SPRITE));
     }
 
     private static GpuBuffer buildEndFlashQuad(TextureAtlas atlas) {
@@ -508,7 +542,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         modelViewStack.popMatrix();
     }
 
-    public void renderSunMoonAndStars(PoseStack poseStack, float rainBrightness, float starBrightness, CelestialBody observer, long gameTime) {
+    public void renderCelestialAndStars(PoseStack poseStack, float rainBrightness, float starBrightness, CelestialBody observer, long gameTime) {
         CelestialBodyManager manager = CelestialBodyManager.getInstance();
         poseStack.pushPose();
 
@@ -538,48 +572,31 @@ public class ReadstarSkyRenderer implements AutoCloseable {
 
         // ===== 在天球框架内各自指向世界坐标方向 =====
         if (hasFrame && observerPos != null) {
-            // ---- SUN ----
-            CelestialBody earth = manager.getCelestialBody("earth");
-            if (earth != null && earth.hostStar != null) {
-                Vector3f toWorld = new Vector3f(earth.hostStar.position).sub(observerPos);
-                if (toWorld.lengthSquared() > 0.0001f) {
-                    toWorld.normalize();
-                    float size = CelestialBodyManager.getApparentSize(observerPos, earth.hostStar);
-                    poseStack.pushPose();
-                    poseStack.mulPose(new Quaternionf().rotateTo(new Vector3f(0, 1, 0), toWorld));
-                    this.renderSun(size, rainBrightness, poseStack);
-                    poseStack.popPose();
-                }
-            }
-
-            // ---- MOON ----
-            // 月亮已整合到下方 OTHER CELESTIAL BODIES 循环中统一处理，
-            // 不再单独渲染——其纹理索引至 non-luminous/moon/ 目录
-
-            // ---- OTHER CELESTIAL BODIES（遍历所有天体，渲染有纹理解析的） ----
-            // 对 CelestialBodyManager 中每个天体：
-            //   1. 排除观测者自身、宿主恒星（太阳）
-            //   2. 排除无 hostStar 的天体（不发光，月相计算无意义）
-            //   3. 通过 body.name 懒创建/查找对应的月相缓冲
-            //   4. 找到则用 renderBody() 渲染，复用 computeMoonPhase 计算月相
+            // ---- ALL CELESTIAL BODIES（统一渲染 luminous + non-luminous） ----
             for (CelestialBody body : manager.getCelestialBodyTreeMap()) {
-                // 排除已单独渲染的对象
                 if (body == observer) continue;
-                if (body == observer.hostStar) continue;
                 if (body.hostStar == null) continue;
 
                 Vector3f toWorld = new Vector3f(body.position).sub(observerPos);
-                if (toWorld.lengthSquared() > 0.0001f) {
-                    toWorld.normalize();
-                    MoonPhase phase = computeMoonPhase(observerPos, body);
+                if (toWorld.lengthSquared() <= 0.0001f) continue;
+                toWorld.normalize();
+
+                GpuBuffer buffer;
+                MoonPhase phase;
+                if (body.luminance > 0) {
+                    buffer = getOrCreateLuminousBuffer(body.name);
+                    phase = MoonPhase.values()[0]; // 发光天体无月相，固定 full
+                } else {
+                    buffer = getOrCreateNonluminousBuffer(body.name);
+                    phase = computeMoonPhase(observerPos, body);
+                }
+
+                if (buffer != null) {
                     float size = CelestialBodyManager.getApparentSize(observerPos, body);
-                    GpuBuffer buffer = getOrCreateNonluminousBuffer(body.name);
-                    if (buffer != null) {
-                        poseStack.pushPose();
-                        poseStack.mulPose(new Quaternionf().rotateTo(new Vector3f(0, 1, 0), toWorld));
-                        renderBody(body.name, buffer, phase, size, rainBrightness, poseStack);
-                        poseStack.popPose();
-                    }
+                    poseStack.pushPose();
+                    poseStack.mulPose(new Quaternionf().rotateTo(new Vector3f(0, 1, 0), toWorld));
+                    renderBody(body.name, buffer, phase, size, rainBrightness, poseStack);
+                    poseStack.popPose();
                 }
             }
         }
@@ -720,37 +737,8 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         }
     }
 
-    private void renderSun(float size, float rainBrightness, PoseStack poseStack) {
-        Matrix4fStack modelViewStack = RenderSystem.getModelViewStack();
-        modelViewStack.pushMatrix();
-        modelViewStack.mul(poseStack.last().pose());
-        modelViewStack.translate(0.0F, 100.0F, 0.0F);
-        modelViewStack.scale(size, -1.0F, size);
-        GpuBufferSlice dynamicTransforms = RenderSystem.getDynamicUniforms()
-                .writeTransform(modelViewStack, new Vector4f(1.0F, 1.0F, 1.0F, rainBrightness), new Vector3f(),
-                        new Matrix4f());
-        GpuTextureView color = Minecraft.getInstance().getMainRenderTarget().getColorTextureView();
-        GpuTextureView depth = Minecraft.getInstance().getMainRenderTarget().getDepthTextureView();
-        GpuBuffer indexBuffer = this.quadIndices.getBuffer(6);
-
-        try (RenderPass renderPass = RenderSystem.getDevice()
-                .createCommandEncoder()
-                .createRenderPass(() -> "Sky sun", color, OptionalInt.empty(), depth, OptionalDouble.empty())) {
-            renderPass.setPipeline(RenderPipelines.CELESTIAL);
-            RenderSystem.bindDefaultUniforms(renderPass);
-            renderPass.setUniform("DynamicTransforms", dynamicTransforms);
-            renderPass.bindTexture("Sampler0", this.celestialsAtlas.getTextureView(),
-                    this.celestialsAtlas.getSampler());
-            renderPass.setVertexBuffer(0, this.sunBuffer);
-            renderPass.setIndexBuffer(indexBuffer, this.quadIndices.type());
-            renderPass.drawIndexed(0, 0, 6, 1);
-        }
-
-        modelViewStack.popMatrix();
-    }
-
     /**
-     * 通用天体渲染方法。通过 phase.index() * 4 定位到对应月相的 quad。
+     * 通用天体渲染方法（luminous + non-luminous 共用）。
      *
      * @param name          天体的调试名称（仅用于 RenderPass 命名）
      * @param buffer        该天体的月相 GPU 缓冲（来自 getOrCreateBodyBuffer 懒创建）
@@ -779,8 +767,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
             renderPass.setPipeline(RenderPipelines.CELESTIAL);
             RenderSystem.bindDefaultUniforms(renderPass);
             renderPass.setUniform("DynamicTransforms", dynamicTransforms);
-            renderPass.bindTexture("Sampler0", this.celestialsAtlas.getTextureView(),
-                    this.celestialsAtlas.getSampler());
+            renderPass.bindTexture("Sampler0", this.celestialsAtlas.getTextureView(), this.celestialsAtlas.getSampler());
             renderPass.setVertexBuffer(0, buffer);
             renderPass.setIndexBuffer(indexBuffer, this.quadIndices.type());
             renderPass.drawIndexed(baseVertex, 0, 6, 1);
@@ -1238,13 +1225,13 @@ public class ReadstarSkyRenderer implements AutoCloseable {
 
     @Override
     public void close() {
-        this.sunBuffer.close();
         this.starBuffer.close();
         this.topSkyBuffer.close();
         this.bottomSkyBuffer.close();
         this.endSkyBuffer.close();
         this.sunriseBuffer.close();
         this.endFlashBuffer.close();
-        this.NonluminousBuffers.values().forEach(GpuBuffer::close);
+        this.nonluminousBuffers.values().forEach(GpuBuffer::close);
+        this.luminousBuffers.values().forEach(GpuBuffer::close);
     }
 }

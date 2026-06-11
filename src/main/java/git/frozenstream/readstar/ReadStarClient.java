@@ -15,6 +15,7 @@ import git.frozenstream.readstar.skybox.ReadstarSkyboxRenderer;
 import git.frozenstream.readstar.sprite.CelestialSpriteSourceProvider;
 import git.frozenstream.readstar.sprite.MoonSpriteSource;
 import git.frozenstream.readstar.sprite.StarSpriteSource;
+import git.frozenstream.readstar.sprite.SunSpriteSource;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.client.resources.model.sprite.AtlasManager;
@@ -124,6 +125,9 @@ public class ReadStarClient {
         event.register(
                 Identifier.fromNamespaceAndPath(ReadStar.MODID, "moon_crop"),
                 MoonSpriteSource.CODEC);
+        event.register(
+                Identifier.fromNamespaceAndPath(ReadStar.MODID, "sun"),
+                SunSpriteSource.CODEC);
     }
 
     @SubscribeEvent
