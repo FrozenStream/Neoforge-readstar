@@ -570,6 +570,14 @@ public class ReadstarSkyRenderer implements AutoCloseable {
             hasFrame = true;
         }
 
+        // ---- COMETS（彗星尾部渲染） ----
+        renderComets(manager, observerPos, rainBrightness, poseStack, gameTime);
+
+        // ===== STARS (世界坐标已固定，被 frameQuat 整体旋转) =====
+        if (effectiveBrightness > 0.0F) {
+            this.renderStars(effectiveBrightness, poseStack);
+        }
+
         // ===== 在天球框架内各自指向世界坐标方向 =====
         if (hasFrame && observerPos != null) {
             // ---- ALL CELESTIAL BODIES（统一渲染 luminous + non-luminous） ----
@@ -601,13 +609,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
             }
         }
 
-        // ---- COMETS（彗星尾部渲染） ----
-        renderComets(manager, observerPos, rainBrightness, poseStack, gameTime);
-
-        // ===== STARS (世界坐标已固定，被 frameQuat 整体旋转) =====
-        if (effectiveBrightness > 0.0F) {
-            this.renderStars(effectiveBrightness, poseStack);
-        }
+        
 
         poseStack.popPose();
     }
@@ -764,7 +766,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         try (RenderPass renderPass = RenderSystem.getDevice()
                 .createCommandEncoder()
                 .createRenderPass(() -> "Sky " + name, color, OptionalInt.empty(), depth, OptionalDouble.empty())) {
-            renderPass.setPipeline(RenderPipelines.CELESTIAL);
+            renderPass.setPipeline(ReadStarClient.CELESTIAL_TRANSLUCENT_PIPELINE);
             RenderSystem.bindDefaultUniforms(renderPass);
             renderPass.setUniform("DynamicTransforms", dynamicTransforms);
             renderPass.bindTexture("Sampler0", this.celestialsAtlas.getTextureView(), this.celestialsAtlas.getSampler());
