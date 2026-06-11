@@ -79,6 +79,12 @@ public class ReadStarClient {
      */
     public static RenderPipeline COMET_TAIL_PIPELINE;
 
+    /**
+     * 参照原版 CELESTIAL 管线，但使用 TRANSLUCENT 混合模式，
+     * 用于 renderBody 绘制半透明天体（月相叠加等）。
+     */
+    public static RenderPipeline CELESTIAL_TRANSLUCENT_PIPELINE;
+
     @SubscribeEvent
     static void onRegisterStarPipelines(RegisterRenderPipelinesEvent event) {
         // 自定义管线：使用 star_fov shader（分离 center + billboard offset），
@@ -106,6 +112,19 @@ public class ReadStarClient {
                 .build();
         event.registerPipeline(COMET_TAIL_PIPELINE);
         ReadStar.LOGGER.info("Registered custom comet tail pipeline: readstar:pipeline/comet_tail");
+
+        // 天体半透明管线：参照 CELESTIAL（position_tex + QUADS），但使用 TRANSLUCENT 混合
+        CELESTIAL_TRANSLUCENT_PIPELINE = RenderPipeline
+                .builder(new RenderPipeline.Snippet[] { RenderPipelines.MATRICES_PROJECTION_SNIPPET })
+                .withLocation(Identifier.fromNamespaceAndPath(ReadStar.MODID, "pipeline/celestial_translucent"))
+                .withVertexShader(Identifier.fromNamespaceAndPath("minecraft", "core/position_tex"))
+                .withFragmentShader(Identifier.fromNamespaceAndPath("minecraft", "core/position_tex"))
+                .withSampler("Sampler0")
+                .withColorTargetState(new ColorTargetState(BlendFunction.TRANSLUCENT))
+                .withVertexFormat(DefaultVertexFormat.POSITION_TEX, Mode.QUADS)
+                .build();
+        event.registerPipeline(CELESTIAL_TRANSLUCENT_PIPELINE);
+        ReadStar.LOGGER.info("Registered celestial translucent pipeline: readstar:pipeline/celestial_translucent");
     }
 
     public ReadStarClient(ModContainer container) {
