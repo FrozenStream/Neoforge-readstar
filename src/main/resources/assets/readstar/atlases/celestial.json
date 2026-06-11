@@ -4,6 +4,9 @@
       "type": "minecraft:directory",
       "source": "environment/celestial",
       "prefix": "environment/celestial/"
+    },
+    {
+      "type": "readstar:moon_crop"
     }
   ]
 }

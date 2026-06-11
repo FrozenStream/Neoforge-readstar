@@ -165,7 +165,7 @@ Sun → Earth + Mars → Moon. Real solar system data.
 
 ### Sun Textures
 
-Single image per star. Place at `assets/<namespace>/textures/environment/celestial/suns/<name>.png`. `readstar:suns/white_sun.png` is a placeholder example — replace with your own.
+Single image per star. Place at `assets/<namespace>/textures/environment/celestial/luminous/<name>.png`. `readstar:luminous/white_sun.png` is a placeholder example — replace with your own.
 
 ---
 
@@ -218,7 +218,7 @@ Core feature: **add 8 moon phases to any celestial body by simply placing PNG fi
 #### Directory
 
 ```
-assets/<namespace>/textures/environment/celestial/moons/<body-name>/
+assets/<namespace>/textures/environment/celestial/non-luminous/<body-name>/
 ```
 
 - `<body-name>` must match `system.json` name **in lowercase**
@@ -247,7 +247,7 @@ assets/<namespace>/textures/environment/celestial/moons/<body-name>/
 #### Example: Jupiter
 
 ```
-assets/readstar/textures/environment/celestial/moons/jupiter/
+assets/readstar/textures/environment/celestial/non-luminous/jupiter/
 ├── full_moon.png
 ├── waning_gibbous.png
 ├── third_quarter.png

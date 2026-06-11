@@ -161,7 +161,7 @@
 
 ### 太阳纹理
 
-单张贴图，放 `assets/<命名空间>/textures/environment/celestial/suns/<名称>.png`。`readstar:suns/white_sun.png` 仅作为占位示例，替换为自己的贴图即可。
+单张贴图，放 `assets/<命名空间>/textures/environment/celestial/luminous/<名称>.png`。`readstar:luminous/white_sun.png` 仅作为占位示例，替换为自己的贴图即可。
 
 ---
 
@@ -214,7 +214,7 @@
 #### 目录结构
 
 ```
-assets/<命名空间>/textures/environment/celestial/moons/<天体名称>/
+assets/<命名空间>/textures/environment/celestial/non-luminous/<天体名称>/
 ```
 
 - `<天体名称>` 必须与 `system.json` 中名称**小写一致**
@@ -243,7 +243,7 @@ assets/<命名空间>/textures/environment/celestial/moons/<天体名称>/
 #### 示例：添加木星
 
 ```
-assets/readstar/textures/environment/celestial/moons/jupiter/
+assets/readstar/textures/environment/celestial/non-luminous/jupiter/
 ├── full_moon.png
 ├── waning_gibbous.png
 ├── third_quarter.png
