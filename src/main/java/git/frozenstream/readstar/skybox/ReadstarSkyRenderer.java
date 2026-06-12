@@ -376,11 +376,11 @@ public class ReadstarSkyRenderer implements AutoCloseable {
                     Vector3f center = new Vector3f(star.direction).normalize(100.0F);
 
                     // 逐星亮度：alpha 从 vmag>3 衰减，RGB 从 vmag>1 衰减
-                    float alphaF = Math.max(1.0f - Math.max(0.0f, vmag - 0.0f) / 10.0f, 0.5f);
-                    float colorF = Math.max(1.0f - Math.max(0.0f, vmag - 1.0f) / 7.0f, 0.2f);
+                    float alphaF = Math.max(1.0f - Math.max(0.0f, vmag - 1.0f) / 10.0f, 0.01f);
+                    float colorF = Math.max(1.0f - Math.max(0.0f, vmag - 1.0f) / 10.0f, 0.01f);
                     int starAlpha = (int) (alphaF * 255.0f);
                     int starColor = (int) (colorF * 255.0f);
-                    float starSize = Math.max(1.0f - Math.max(0.0f, vmag - 1.0f) / 10.0f, 0.5f) * coreSize;
+                    float starSize = Math.max(1.0f - Math.max(0.0f, vmag - 1.0f) / 20.0f, 0.4f) * coreSize;
 
                     // ---- 核心 quad（所有星）：4 顶点共享 center，Offset 区分角落 ----
                     Identifier coreId = Identifier.fromNamespaceAndPath(ReadStar.MODID, "environment/stars/color_" + color);
@@ -606,51 +606,6 @@ public class ReadstarSkyRenderer implements AutoCloseable {
             renderPass.setVertexBuffer(0, this.topSkyBuffer);
             renderPass.draw(0, 10);
         }
-    }
-
-    /**
-     * 根据观测者天体的大气 HSV 属性，将大气颜色混合到原版天空颜色中。
-     *
-     * @param skyColor 原版计算的天空颜色（ARGB）
-     * @param observer 观测者所在天体
-     * @return 混合后的天空颜色
-     */
-    private static int blendAtmosphereColor(int skyColor, CelestialBody observer) {
-        if (observer == null || !observer.hasAtmosphere) {
-            return skyColor;
-        }
-
-        int hsv = observer.atmosphereHSV;
-        float v = CelestialBody.getValueFloat(hsv);
-        if (v <= 0f) return skyColor;
-
-        // 提取大气 HSV → RGB
-        float[] atmRgb = hsvToRgb(
-                CelestialBody.getHueFloat(hsv),
-                CelestialBody.getSaturationFloat(hsv),
-                1.0f);
-
-        // 提取原版天空颜色 RGB
-        float origR = ARGB.red(skyColor) / 255f;
-        float origG = ARGB.green(skyColor) / 255f;
-        float origB = ARGB.blue(skyColor) / 255f;
-
-        // 天空亮度（夜间 → 0，白昼 → 1），防止夜晚大气着色
-        float skyBrightness = Math.max(origR, Math.max(origG, origB));
-
-        // 混合权重：浓度 × 强度系数 × 天空亮度（夜晚自动归零）
-        float blend = Mth.clamp(v * 0.6f * skyBrightness, 0f, 1f);
-        float sat = CelestialBody.getSaturationFloat(hsv);
-
-        // lerp 原版颜色 → 大气颜色
-        float r = origR + (atmRgb[0] - origR) * blend * sat;
-        float g = origG + (atmRgb[1] - origG) * blend * sat;
-        float b = origB + (atmRgb[2] - origB) * blend * sat;
-
-        return ARGB.color(255,
-                (int) Mth.clamp(r * 255f, 0, 255),
-                (int) Mth.clamp(g * 255f, 0, 255),
-                (int) Mth.clamp(b * 255f, 0, 255));
     }
 
     /**

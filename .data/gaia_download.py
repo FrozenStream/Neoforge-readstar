@@ -11,7 +11,7 @@ import os
 from astroquery.gaia import Gaia
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-OUTPUT = os.path.join(SCRIPT_DIR, 'gaia_bright_with_teff.vot')
+OUTPUT = os.path.join(SCRIPT_DIR, 'gaia_bright_with_teff_vmag10.vot')
 
 QUERY = """
 SELECT source_id, ra, dec,
@@ -19,12 +19,12 @@ SELECT source_id, ra, dec,
        teff_gspphot, ag_gspphot, logg_gspphot,
        parallax, pmra, pmdec, radial_velocity
 FROM gaiadr3.gaia_source
-WHERE phot_g_mean_mag < 6.5
+WHERE phot_g_mean_mag < 10.0
 """
 
 def main():
     print("=" * 55)
-    print("  Gaia DR3 TAP 查询: G < 6.5 + teff/BP/RP")
+    print("  Gaia DR3 TAP 查询: G < 10.0 + teff/BP/RP")
     print("=" * 55)
 
     print("\n📡 提交异步查询...")
