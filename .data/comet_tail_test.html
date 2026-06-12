@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>☄️ 彗星羽状尾部 - 高效渲染测试</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#0a0a12; color:#ccc; font-family:'Segoe UI',system-ui,sans-serif;
+         display:flex; flex-direction:column; align-items:center; min-height:100vh; padding:10px; }
+  h1 { margin:10px 0; font-size:1.4em; color:#8af; }
+  .container { display:flex; gap:20px; flex-wrap:wrap; justify-content:center; }
+  canvas { border:1px solid #333; border-radius:4px; background:#050510; }
+  .controls { background:#111122; border:1px solid #333; border-radius:8px;
+              padding:15px; width:300px; display:flex; flex-direction:column; gap:10px; }
+  .controls label { display:flex; justify-content:space-between; align-items:center; font-size:0.85em; }
+  .controls input[type="range"] { width:140px; accent-color:#8af; }
+  .val { color:#8af; font-weight:bold; min-width:36px; text-align:right; font-size:0.85em; }
+  .section-title { color:#fa8; font-size:0.75em; text-transform:uppercase;
+                   letter-spacing:1px; margin-top:4px; border-bottom:1px solid #333; padding-bottom:2px; }
+  button { background:#224; border:1px solid #448; color:#aaf;
+           padding:8px; border-radius:4px; cursor:pointer; font-size:0.9em; }
+  button:hover { background:#335; }
+  .stats { font-size:0.75em; color:#666; text-align:center; margin-top:5px; }
+  .preset-row { display:flex; gap:4px; flex-wrap:wrap; }
+  .preset-row button { flex:1; font-size:0.7em; padding:4px; }
+</style>
+</head>
+<body>
+<h1>☄️ 彗星羽状尾部渲染测试</h1>
+<p style="color:#666;font-size:0.8em;margin-bottom:10px;">
+  模拟 comet_tail.fsh 片段着色器 · Canvas 2D 高效绘制</p>
+<div class="container">
+  <canvas id="c" width="900" height="700"></canvas>
+  <div class="controls">
+    <div class="section-title">🚀 预设场景</div>
+    <div class="preset-row">
+      <button onclick="preset('perihelion')">☀️ 近日点</button>
+      <button onclick="preset('mid')">🌍 1 AU</button>
+      <button onclick="preset('aphelion')">❄️ 远日点</button>
+    </div>
+
+    <div class="section-title">🌞 轨道参数</div>
+    <label>日距 (AU) <span><input type="range" id="sunDist" min="0.2" max="5" step="0.05" value="1.0"><span class="val" id="sunDistV">1.00</span></span></label>
+    <label>曲率因子 <span><input type="range" id="curv" min="0.1" max="3" step="0.05" value="1.0"><span class="val" id="curvV">1.00</span></span></label>
+    <label>轨道符号 <span><input type="range" id="sign" min="-1" max="1" step="2" value="1"><span class="val" id="signV">+</span></span></label>
+    <label>尘埃尾β步数 <span><input type="range" id="betasteps" min="4" max="50" step="1" value="28"><span class="val" id="betastepsV">28</span></span></label>
+
+    <div class="section-title">✨ 强度</div>
+    <label>彗发辉光 <span><input type="range" id="coma" min="0" max="2" step="0.05" value="1.0"><span class="val" id="comaV">1.00</span></span></label>
+    <label>离子尾 <span><input type="range" id="ion" min="0" max="2" step="0.05" value="1.0"><span class="val" id="ionV">1.00</span></span></label>
+    <label>尘埃尾 <span><input type="range" id="dust" min="0" max="2" step="0.05" value="1.0"><span class="val" id="dustV">1.00</span></span></label>
+
+    <div class="section-title">🎞️ 动画</div>
+    <label>时间速度 <span><input type="range" id="spd" min="0" max="3" step="0.1" value="0.5"><span class="val" id="spdV">0.50</span></span></label>
+    <button id="pauseBtn">⏯️ 暂停</button>
+    <div class="stats" id="stats">FPS: --</div>
+  </div>
+</div>
+
+<script>
+// ========== Hash & Noise (与 GLSL shader 对应) ==========
+const hashes = new Map();
+function h(x,y){ const k=x*127.1+y*311.7; if(hashes.has(k))return hashes.get(k);
+  const v=Math.sin(k)*43758.5453; const r=v-Math.floor(v); hashes.set(k,r); return r; }
+function noise(x,y){ const ix=Math.floor(x),iy=Math.floor(y),fx=x-ix,fy=y-iy;
+  const ux=fx*fx*(3-2*fx),uy=fy*fy*(3-2*fy);
+  return h(ix,iy)+(h(ix+1,iy)-h(ix,iy))*ux+(h(ix,iy+1)-h(ix,iy))*uy
+        +(h(ix,iy)-h(ix+1,iy)-h(ix,iy+1)+h(ix+1,iy+1))*ux*uy; }
+function fbm(x,y){ let v=0,a=0.5,f=1;
+  for(let i=0;i<4;i++){ v+=a*noise(x*f,y*f); f*=2.3; a*=0.55; } return v; }
+
+// ========== Canvas ==========
+const cv=document.getElementById('c'), ctx=cv.getContext('2d');
+const W=cv.width, H=cv.height;
+const NX=200, NY=520;           // 彗核位置
+const TL=600;                    // 尾巴像素长度
+
+// ========== 参数 ==========
+const P={ sunDist:1.0, curv:1.0, sign:1, betaSteps:28,
+  comaStr:1.0, ionStr:1.0, dustStr:1.0, speed:0.5 };
+let t=0, paused=false, fpsArr=[], lastT=0;
+
+// ========== UI ==========
+function bind(id,key,fmt){ const s=document.getElementById(id),v=document.getElementById(id+'V');
+  s.oninput=()=>{ P[key]=parseFloat(s.value); v.textContent=fmt(P[key]); }; }
+bind('sunDist','sunDist',x=>x.toFixed(2));
+bind('curv','curv',x=>x.toFixed(2));
+bind('sign','sign',x=>x>0?'+':'−');
+bind('betasteps','betaSteps',x=>Math.round(x));
+bind('coma','comaStr',x=>x.toFixed(2));
+bind('ion','ionStr',x=>x.toFixed(2));
+bind('dust','dustStr',x=>x.toFixed(2));
+bind('spd','speed',x=>x.toFixed(2));
+document.getElementById('pauseBtn').onclick=()=>paused=!paused;
+
+function preset(name){
+  const m={ perihelion:{sunDist:0.25,curv:2.5,comaStr:1.5,ionStr:1.6,dustStr:1.8,speed:1.2},
+            mid:{sunDist:1.0,curv:1.0,comaStr:1.0,ionStr:1.0,dustStr:1.0,speed:0.5},
+            aphelion:{sunDist:4.5,curv:0.35,comaStr:0.5,ionStr:0.25,dustStr:0.3,speed:0.15} }[name];
+  if(!m)return;
+  for(const[k,v]of Object.entries(m)){
+    P[k]=v;
+    const id={sunDist:'sunDist',curv:'curv',comaStr:'coma',ionStr:'ion',dustStr:'dust',speed:'spd',betaSteps:'betasteps'}[k]||k;
+    const el=document.getElementById(id); if(el){ el.value=v; el.oninput(); }
+  }
+  t=0;
+}
+
+// ========== 坐标转换：shader local → 屏幕像素 ==========
+// localY: 反太阳方向(+), localX: 垂直方向
+function l2s(lx,ly){ return { x:NX+lx*TL/2, y:NY-ly*TL/2 }; }
+
+// ========== 渲染层 ==========
+
+function drawStars(){
+  ctx.fillStyle='#050510'; ctx.fillRect(0,0,W,H);
+  for(let i=0;i<500;i++){
+    const sx=(h(i,0)*W)|0, sy=(h(i,1)*H)|0, b=h(i,2)*0.6+0.2;
+    ctx.fillStyle=`rgba(${(b*255)|0},${(b*255)|0},${(b*305)|0},${b})`;
+    ctx.fillRect(sx,sy,b>0.55?1.5:0.8,b>0.55?1.5:0.8);
+  }
+  // 方向指示
+  ctx.save();
+  ctx.strokeStyle='rgba(255,220,100,0.4)'; ctx.lineWidth=1; ctx.setLineDash([4,8]);
+  ctx.beginPath(); ctx.moveTo(NX,NY); ctx.lineTo(NX,NY-100); ctx.stroke();
+  ctx.setLineDash([]); ctx.fillStyle='#fd8'; ctx.font='11px sans-serif';
+  ctx.fillText('☀ 太阳方向',NX+10,NY-95);
+  ctx.strokeStyle='rgba(80,140,255,0.35)'; ctx.setLineDash([4,8]);
+  ctx.beginPath(); ctx.moveTo(NX,NY); ctx.lineTo(NX,NY+100); ctx.stroke();
+  ctx.setLineDash([]); ctx.fillStyle='#58f';
+  ctx.fillText('← 反太阳（尾巴方向）',NX+10,NY+100);
+  ctx.restore();
+}
+
+// 彗星活动因子：日距 < 0.5 AU → 1.0，日距 > 3.5 AU → 0（休眠裸核）
+function activity(sd){
+  if(sd>=3.5)return 0; if(sd<=0.5)return 1;
+  const t=(3.5-sd)/3.0; return t*t;
+}
+
+function drawComa(){
+  const sd=Math.max(P.sunDist,0.1);
+  const act=activity(sd);
+  const a=P.comaStr*act;
+  // 外层辉光
+  const g1=ctx.createRadialGradient(NX,NY,0,NX,NY,50);
+  g1.addColorStop(0,`rgba(200,220,255,${0.6*a})`);
+  g1.addColorStop(0.15,`rgba(160,190,255,${0.35*a})`);
+  g1.addColorStop(0.4,`rgba(80,120,220,${0.12*a})`);
+  g1.addColorStop(0.7,`rgba(30,50,120,${0.03*a})`);
+  g1.addColorStop(1,'rgba(0,0,30,0)');
+  ctx.fillStyle=g1; ctx.fillRect(NX-80,NY-80,160,160);
+  // 核心
+  const g2=ctx.createRadialGradient(NX,NY,0,NX,NY,8);
+  g2.addColorStop(0,`rgba(255,255,255,${1.0*a})`);
+  g2.addColorStop(0.3,`rgba(220,235,255,${0.7*a})`);
+  g2.addColorStop(0.7,`rgba(140,180,255,${0.2*a})`);
+  g2.addColorStop(1,'rgba(60,100,200,0)');
+  ctx.fillStyle=g2; ctx.fillRect(NX-20,NY-20,40,40);
+
+  // 裸核：无论日距多远都可见（休眠彗星的暗点）
+  if(act<0.01){
+    ctx.fillStyle='rgba(120,120,140,0.5)'; ctx.beginPath();
+    ctx.arc(NX,NY,1.5,0,Math.PI*2); ctx.fill();
+  }
+}
+
+// ========== 线性渐变笔触（纵向：梯度连续衰减；横向：多遍递减） ==========
+// gradStart/End: 屏幕坐标的渐变起止点
+function gradFromTo(x0,y0,x1,y1, r,g,b, alpha){
+  const grad=ctx.createLinearGradient(x0,y0,x1,y1);
+  grad.addColorStop(0,  `rgba(${r|0},${g|0},${b|0},${alpha})`);
+  grad.addColorStop(0.4,`rgba(${r|0},${g|0},${b|0},${alpha*0.6})`);
+  grad.addColorStop(0.7,`rgba(${r|0},${g|0},${b|0},${alpha*0.2})`);
+  grad.addColorStop(1,  `rgba(${r|0},${g|0},${b|0},0)`);
+  return grad;
+}
+
+// 用渐变 strokeStyle + 多遍宽度绘制（横向软边缘 + 纵向连续渐变）
+function strokeGradient(pathFn, maxWidth, r, g, b, baseAlpha, passes, gradStartX, gradStartY, gradEndX, gradEndY){
+  for(let p=0;p<passes;p++){
+    const t=p/passes;
+    const w=maxWidth*(1-t*0.92);
+    const a=baseAlpha*Math.exp(-t*t*6.0);
+    if(w<0.15||a<0.0005)continue;
+    ctx.lineWidth=w;
+    ctx.strokeStyle=gradFromTo(gradStartX,gradStartY,gradEndX,gradEndY, r,g,b, a);
+    pathFn();
+    ctx.stroke();
+  }
+}
+
+// 构建路径
+function makePath(points){
+  return ()=>{
+    ctx.beginPath();
+    const p0=l2s(points[0].lx,points[0].ly); ctx.moveTo(p0.x,p0.y);
+    for(let i=1;i<points.length;i++){
+      const p=l2s(points[i].lx,points[i].ly); ctx.lineTo(p.x,p.y);
+    }
+  };
+}
+
+// ========== 离子尾 ==========
+function drawIonTail(){
+  const sd=Math.max(P.sunDist,0.1);
+  const act=activity(sd);
+  if(act<0.001)return;
+  const alpha=P.ionStr*act;
+
+  const tailPts=[];
+  for(let j=0;j<=250;j++){
+    const along=j/250*2.0;
+    let wx=Math.sin(along*12+t*0.04)*0.004+Math.sin(along*27+t*0.07)*0.002;
+    tailPts.push({lx:wx, ly:along});
+  }
+
+  // 渐变：从彗核向尾巴远端（屏幕上方）
+  const gx=NX, gy0=NY, gy1=NY-TL;
+
+  ctx.save();
+  ctx.globalCompositeOperation='source-over';
+  ctx.lineCap='round';
+
+  // 外层辉光管
+  strokeGradient(makePath(tailPts), 28, 50,110,240, alpha*0.22, 8, gx,gy0,gx,gy1);
+  strokeGradient(makePath(tailPts), 14, 80,150,250, alpha*0.30, 6, gx,gy0,gx,gy1);
+
+  // 丝状高光
+  for(let i=0;i<8;i++){
+    const fi=(i-3.5)*0.45, phase=fi*4.2+t*0.05;
+    const pts=[];
+    for(let j=0;j<=250;j+=2){
+      const along=j/250*2.0;
+      let wx=Math.sin(along*14+phase)*0.005+Math.sin(along*30+phase*1.7)*0.0025;
+      pts.push({lx:fi*0.006+wx, ly:along});
+    }
+    const bright=0.35+0.65*fbm(i*2.3+t*0.03,i*5.1);
+    const ba=Math.min(bright*alpha*0.55,1);
+    const rr=150+bright*105, gg=180+bright*75, bb=255;
+    strokeGradient(makePath(pts), 4.5, rr,gg,bb, ba*0.5, 5, gx,gy0,gx,gy1);
+    strokeGradient(makePath(pts), 1.8, rr,gg,bb, ba*0.7, 4, gx,gy0,gx,gy1);
+  }
+
+  // 核心丝
+  for(let i=0;i<3;i++){
+    const fi=(i-1)*0.25;
+    const pts=[];
+    for(let j=0;j<=250;j+=3){
+      const along=j/250*2.0;
+      pts.push({lx:fi*0.003+Math.sin(along*18+fi*5+t*0.06)*0.003, ly:along});
+    }
+    strokeGradient(makePath(pts), 1.6, 200,230,255, alpha*0.4, 4, gx,gy0,gx,gy1);
+  }
+
+  ctx.restore();
+}
+
+// ========== 尘埃尾 ==========
+function drawDustTail(){
+  const sd=Math.max(P.sunDist,0.1);
+  const act=activity(sd);
+  if(act<0.001)return;
+  const alpha=P.dustStr*act;
+  const steps=P.betaSteps, bStart=0.08, bEnd=3.8;
+
+  // 渐变：彗核 → 尾巴远端
+  const gx=NX, gy0=NY, gy1=NY-TL;
+
+  ctx.save();
+  ctx.globalCompositeOperation='source-over';
+  ctx.lineCap='round';
+
+  // 粗层
+  const coarseSteps=8;
+  for(let j=0;j<coarseSteps;j++){
+    const beta=bStart+(bEnd-bStart)*j/(coarseSteps-1);
+    const curv=P.curv*beta/Math.max(sd*sd,0.01)*P.sign;
+    const tBeta=beta/bEnd;
+    const pts=[];
+    for(let k=0;k<=80;k++){ const a=k/80*2.0; pts.push({lx:curv*a*a, ly:a}); }
+    const rr=220+(1-tBeta)*35, gg=200+(1-tBeta)*30, bb=140+tBeta*60;
+    strokeGradient(makePath(pts), 18*(1-tBeta+0.15), rr,gg,bb, alpha*0.14, 7, gx,gy0,gx,gy1);
+  }
+
+  // 中层
+  const midSteps=Math.min(steps,20);
+  for(let j=0;j<midSteps;j++){
+    const beta=bStart+(bEnd-bStart)*j/(midSteps-1);
+    const curv=P.curv*beta/Math.max(sd*sd,0.01)*P.sign;
+    const tBeta=beta/bEnd;
+    const pts=[];
+    for(let k=0;k<=120;k++){ const a=k/120*2.0; pts.push({lx:curv*a*a, ly:a}); }
+    const rr=240+(1-tBeta)*15, gg=210+(1-tBeta)*25, bb=120+tBeta*80;
+    const cv=fbm(beta*3.7+t*0.015,beta*5.1)*0.08;
+    strokeGradient(makePath(pts), 7*(1-tBeta+0.2), rr+cv*255,gg+cv*255,bb+cv*255, alpha*0.22, 6, gx,gy0,gx,gy1);
+  }
+
+  // 细节层
+  for(let j=0;j<steps;j++){
+    const beta=bStart+(bEnd-bStart)*j/(steps-1);
+    const curv=P.curv*beta/Math.max(sd*sd,0.01)*P.sign;
+    const tBeta=beta/bEnd;
+    const pts=[];
+    for(let k=0;k<=160;k++){
+      const a=k/160*2.0;
+      const wobble=fbm(a*15+t*0.02,beta*8)*0.0015;
+      pts.push({lx:curv*a*a+wobble, ly:a});
+    }
+    const rw=0.85+(1-tBeta)*0.15, gw=0.88+(1-tBeta)*0.04, bw=0.70+tBeta*0.25;
+    const cv=fbm(beta*4.1+t*0.02,beta*3.7)*0.08;
+    strokeGradient(makePath(pts), 2.5*(1-tBeta*0.7), (rw+cv)*255,(gw+cv)*255,(bw+cv)*255, alpha*0.28, 4, gx,gy0,gx,gy1);
+  }
+
+  ctx.restore();
+}
+
+function drawNucleus(){
+  ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(NX,NY,2.5,0,Math.PI*2); ctx.fill();
+}
+
+function drawLegend(){
+  const lx=W-220,ly=25;
+  ctx.font='12px sans-serif';
+  [['✦ 彗核 + 彗发','#cdf'],['〰 离子尾（丝状）','#6af'],['↘ 尘埃尾（羽状扇形）','#fa8']]
+    .forEach(([l,c],i)=>{ctx.fillStyle=c;ctx.fillText(l,lx,ly+i*20);});
+}
+
+// ========== 主循环 ==========
+function frame(ts){
+  const dt=lastT?Math.min((ts-lastT)/1000,0.1):0.016; lastT=ts;
+  fpsArr.push(1/dt); if(fpsArr.length>30)fpsArr.shift();
+  const fps=Math.round(fpsArr.reduce((a,b)=>a+b,0)/fpsArr.length);
+  document.getElementById('stats').textContent=
+    `FPS: ${fps} | 日距: ${P.sunDist.toFixed(2)} AU | 流线: ${P.betaSteps}条`;
+
+  if(!paused) t+=dt*P.speed;
+
+  drawStars();
+  drawDustTail();
+  drawIonTail();
+  drawComa();
+  drawNucleus();
+  drawLegend();
+  requestAnimationFrame(frame);
+}
+
+// 启动
+document.querySelectorAll('input[type=range]').forEach(s=>s.oninput());
+preset('mid');
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

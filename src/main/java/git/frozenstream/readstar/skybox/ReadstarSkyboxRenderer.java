@@ -1,6 +1,7 @@
 package git.frozenstream.readstar.skybox;
 
 import com.mojang.blaze3d.vertex.*;
+import git.frozenstream.readstar.elements.CelestialBody;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.state.level.LevelRenderState;
 import net.minecraft.client.renderer.state.level.SkyRenderState;
@@ -12,7 +13,19 @@ import org.joml.Matrix4fc;
 
 
 public class ReadstarSkyboxRenderer implements CustomSkyboxRenderer, ResourceManagerReloadListener {
+    private static final ReadstarSkyboxRenderer INSTANCE = new ReadstarSkyboxRenderer();
+
+    public static ReadstarSkyboxRenderer getInstance() {
+        return INSTANCE;
+    }
+
     private ReadstarSkyRenderer skyRenderer = null;
+    private CelestialBody observer;
+
+    private ReadstarSkyboxRenderer() {}
+
+    public CelestialBody getObserver() { return observer; }
+    public void setObserver(CelestialBody observer) { this.observer = observer; }
 
     /** 获取当前天空渲染器实例（供 HUD 等外部调用） */
     public ReadstarSkyRenderer getSkyRenderer() {
@@ -40,11 +53,15 @@ public class ReadstarSkyboxRenderer implements CustomSkyboxRenderer, ResourceMan
             }
         } else {
             PoseStack poseStack = new PoseStack();
+            // 1. 天空底色（原版 biome skyColor，无大气混合）
             skyRenderer.renderSkyDisc(state.skyColor);
             skyRenderer.renderSunriseAndSunset(poseStack, state.sunAngle, state.sunriseAndSunsetColor);
-            skyRenderer.renderSunMoonAndStars(poseStack, state.rainBrightness, state.starBrightness);
+            // 2. 天体 + 星星
+            skyRenderer.renderCelestialAndStars(poseStack, state.rainBrightness, state.starBrightness, this.observer, levelRenderState.gameTime);
             // ===== METEORS (在 frameQuat 框架内渲染) =====
             skyRenderer.buildAndRenderMeteors(poseStack, state.starBrightness, levelRenderState.gameTime);
+            // 3. 大气散射叠加层（平滑衰减，夜晚自动透明）
+            skyRenderer.renderAtmosphereOverlay(this.observer, state.skyColor);
             if (state.shouldRenderDarkDisc) {
                 skyRenderer.renderDarkDisc();
             }

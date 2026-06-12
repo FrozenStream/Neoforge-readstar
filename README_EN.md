@@ -1,13 +1,17 @@
 # ReadStar — NeoForge 26.1 Astronomy Mod
 
+![Night Sky Preview](imgs/Stars_at_night.png)
+
 A Minecraft sky mod driven by real celestial mechanics and star catalog data, featuring planetary orbital systems, star catalogs, FOV-aware rendering, and server-synchronized celestial configuration.
 
 **Author**: FrozenStream
 
 ## Features
 
+- **Real Star Catalog** — 12,000+ real stars from Gaia DR3 (color) + BSC5 (bright star fallback), with per-star brightness and glow
 - **Real Celestial Mechanics** — Keplerian orbital system with unlimited nesting depth
-- **Real Star Catalog** — Hipparcos-derived star data with per-star brightness and glow
+- **Atmospheric Scattering** — HSV-based atmosphere color & glow computation with full-sky overlay and stellar halo
+- **Comet Rendering** — Bézier dust + ion dual-tail structure with dynamic wobble
 - **FOV-Aware Rendering** — Custom shader keeps star screen size constant across FOV changes
 - **Zero-Code Customization** — Add 8 moon phases to any body by simply placing PNGs
 - **Server Sync** — Celestial config managed server-side, auto-synced to all clients
@@ -84,6 +88,10 @@ Place at `saves/<world>/datapacks/<pack>/data/readstar/celestial/system.json` or
       "mass": <double>,
       "radius": <double>,
       "luminance": <int>,
+      "unstableDirtySnowball": <bool>,
+      "hasAtmosphere": <bool>,
+      "atmosphereHSV": <int>,
+      "starHSV": <int>,
       "axis": [<x>, <y>, <z>],
       "orbit": {
         "semiMajorAxis": <double>,
@@ -106,6 +114,10 @@ Place at `saves/<world>/datapacks/<pack>/data/readstar/celestial/system.json` or
 | `mass` | Mass (kg). 0 = fixed at parent position |
 | `radius` | Radius (m). Apparent size = `max(1.024, radius / distance × factor)` |
 | `luminance` | Self-luminosity 0~15. >0 = star; children auto-resolve `hostStar` upward |
+| `unstableDirtySnowball` | Comet flag. `true` renders dual-tail structure |
+| `hasAtmosphere` | Has atmosphere (controls overlay and glow rendering) |
+| `atmosphereHSV` | Atmosphere HSV color, packed int (H<<16 \| S<<8 \| V). H=hue, S=saturation, V=density (0~255) |
+| `starHSV` | Body's own color, same encoding. Luminous = emission, non-luminous = surface reflection |
 | `axis` | Rotation axis. Zero vector defaults to `(0,0,-1)` |
 | `orbit.semiMajorAxis` | Semi-major axis (m). 0 = no orbit |
 | `orbit.eccentricity` | Eccentricity. 0 = circular |
@@ -125,16 +137,19 @@ Sun → Earth + Mars → Moon. Real solar system data.
   "System": {
     "Sun": {
       "mass": 1.989e30, "radius": 6.957e8, "luminance": 15,
+      "unstableDirtySnowball": false, "hasAtmosphere": false, "atmosphereHSV": 0, "starHSV": 2172671,
       "axis": [0, 0, 0],
       "orbit": { "semiMajorAxis": 0, "eccentricity": 0, "inclination": 0, "argumentOfPeriapsis": 0, "longitudeOfAscendingNode": 0, "initialMeanAnomaly": 0 },
       "children": {
         "Earth": {
           "mass": 5.972e24, "radius": 6.371e6, "luminance": 0,
+          "unstableDirtySnowball": false, "hasAtmosphere": true, "atmosphereHSV": 9738751, "starHSV": 9732275,
           "axis": [0, 0, 0],
           "orbit": { "semiMajorAxis": 1.496e11, "eccentricity": 0.0167, "inclination": 0, "argumentOfPeriapsis": 1.796, "longitudeOfAscendingNode": 0, "initialMeanAnomaly": 6.240 },
           "children": {
             "Moon": {
               "mass": 7.342e22, "radius": 1.737e6, "luminance": 0,
+              "unstableDirtySnowball": false, "hasAtmosphere": false, "atmosphereHSV": 0, "starHSV": 1707468,
               "axis": [0, 0, 0.5],
               "orbit": { "semiMajorAxis": 3.844e8, "eccentricity": 0.0549, "inclination": 0.0899, "argumentOfPeriapsis": 0, "longitudeOfAscendingNode": 0, "initialMeanAnomaly": 0 },
               "children": {}
@@ -143,6 +158,7 @@ Sun → Earth + Mars → Moon. Real solar system data.
         },
         "Mars": {
           "mass": 6.417e23, "radius": 3.390e6, "luminance": 0,
+          "unstableDirtySnowball": false, "hasAtmosphere": true, "atmosphereHSV": 1336835, "starHSV": 1356697,
           "axis": [0, 0, 0],
           "orbit": { "semiMajorAxis": 2.279e11, "eccentricity": 0.0934, "inclination": 0.0323, "argumentOfPeriapsis": 0, "longitudeOfAscendingNode": 0.865, "initialMeanAnomaly": 0 },
           "children": {}
@@ -161,9 +177,51 @@ Sun → Earth + Mars → Moon. Real solar system data.
 - `gameTime` drives orbital motion; `daylightTime` (0~24000) drives rotation/zenith
 - Moon phases auto-computed from observer-satellite-star geometry
 
-### Sun Textures
+### Atmosphere System
 
-Single image per star. Place at `assets/<namespace>/textures/environment/celestial/suns/<name>.png`. `readstar:suns/white_sun.png` is a placeholder example — replace with your own.
+Each body can define atmosphere color (HSV) and its own color (HSV), both as packed ints:
+
+```
+atmosphereHSV / starHSV = (H << 16) | (S << 8) | V
+```
+
+| Component | Bits | Range | Meaning |
+|-----------|------|-------|---------|
+| H (Hue) | 16-23 | 0~255 | Hue (0=red → 255 wraps to red) |
+| S (Saturation) | 8-15 | 0~255 | Saturation (0=gray, 255=pure color) |
+| V (Value) | 0-7 | 0~255 | Density/brightness (atmosphereHSV=density, starHSV=brightness) |
+
+**Example values**:
+
+| Body | atmosphereHSV | starHSV | Notes |
+|------|:--:|:--:|-------|
+| Sun | `0` | `2172671` | No atmosphere, G-type yellow-white |
+| Earth | `9738751` | `9732275` | Blue sky (H=0.58, S=0.6, V=1.0) |
+| Mars | `1336835` | `1356697` | Faint red-brown (V=0.01, very thin) |
+
+Pack/unpack via `CelestialBody.packHSV(h, s, v)` and `getHueFloat/getSaturationFloat/getValueFloat`.
+
+**Glow computation** (`computeGlowColor`): halo color = starlight × atmospheric scattering. Hue shifts toward atmosphere; saturation and brightness slightly boosted.
+
+**Rendering layers**:
+```
+1. renderSkyDisc       → vanilla biome sky background
+2. Bodies + stars      → luminous / non-luminous + star catalog
+3. renderAtmosphereOverlay → translucent full-sky atmosphere (fades at night)
+```
+
+### Celestial Textures
+
+Body textures are organized by category, auto-discovered by `celestial.json` atlas:
+
+```
+assets/<namespace>/textures/environment/celestial/
+├── luminous/<name>.png       # Luminous bodies (single image, no phases)
+├── non-luminous/<name>/      # Non-luminous bodies (8 moon phase PNGs)
+└── halo.png                  # Glow texture (grayscale radial falloff)
+```
+
+Luminous bodies need one PNG in `luminous/`. Non-luminous bodies need 8 moon phase PNGs in `non-luminous/<name>/`. `readstar:luminous/white_sun.png` is a placeholder — replace with your own.
 
 ---
 
@@ -173,15 +231,28 @@ Single image per star. Place at `assets/<namespace>/textures/environment/celesti
 
 **Path**: `assets/readstar/custom/stars/stars.json`
 
+#### Data Sources
+
+Star catalogs are auto-generated by scripts in `.data/`:
+
+| Script | Source | Output |
+|--------|--------|--------|
+| `generate_stars.py` | BSC5 Bright Star Catalogue | `stars_named.json` (361 IAU-named) + `stars_numbered.json` (8043 HR-numbered) |
+| `gaia_download.py` | Gaia Archive TAP API | `gaia_bright_with_teff.vot` (with effective temperature) |
+| `gaia_to_stars.py` | Gaia DR3 + BSC5 fallback | `stars_gaia_named.json` (361) + `stars_gaia_numbered.json` (11809) |
+
+**Color pipeline**: Prefer Gaia GSP-Phot effective temperature → Planckian blackbody → sRGB; fallback to bp_rp color-index mapping. 12 brightest stars (Sirius, Vega, etc.) retain BSC5 data due to Gaia detector saturation.
+
+#### JSON Format
+
 ```json
 {
   "Stars": [
     {
       "name": "Sirius",
-      "position": [-0.188181, -0.169608, 0.967338],
-      "type": 1,
+      "position": [-0.1875, -0.2876, 0.9392],
       "Vmag": -1.46,
-      "color": 4291815679
+      "color": 4294967295
     }
   ]
 }
@@ -190,9 +261,8 @@ Single image per star. Place at `assets/<namespace>/textures/environment/celesti
 | Field | Description |
 |-------|-------------|
 | `name` | Identifier (reserved, no runtime effect) |
-| `position` | Unit sphere direction `[x,y,z]`, normalized to distance 100 |
-| `type` | Reserved field, not read by code. Present in data but unused |
-| `Vmag` | Apparent magnitude. Determines glow tier and brightness decay |
+| `position` | Unit sphere direction `[x,y,z]`, normalized to distance 100. Y=North Celestial Pole |
+| `Vmag` | Apparent magnitude (Gaia G-band or BSC5 V-band). Determines glow tier and brightness decay |
 | `color` | ARGB color value; key for atlas sprite generation |
 
 ---
@@ -204,7 +274,7 @@ Core feature: **add 8 moon phases to any celestial body by simply placing PNG fi
 #### Directory
 
 ```
-assets/<namespace>/textures/environment/celestial/moons/<body-name>/
+assets/<namespace>/textures/environment/celestial/non-luminous/<body-name>/
 ```
 
 - `<body-name>` must match `system.json` name **in lowercase**
@@ -233,7 +303,7 @@ assets/<namespace>/textures/environment/celestial/moons/<body-name>/
 #### Example: Jupiter
 
 ```
-assets/readstar/textures/environment/celestial/moons/jupiter/
+assets/readstar/textures/environment/celestial/non-luminous/jupiter/
 ├── full_moon.png
 ├── waning_gibbous.png
 ├── third_quarter.png
@@ -301,6 +371,8 @@ Output: `build/libs/readstar-*.jar`
 | Purple/black star textures | Is `star_base.png` 32-bit RGBA? |
 | Purple moon phase | Missing PNG or filename mismatch |
 | Body not visible | Does it have `hostStar` (ancestor luminance>0)? |
+| Glow/halo not rendering | Is `halo.png` under `textures/environment/celestial/`? |
+| Atmosphere color wrong | Are `atmosphereHSV` / `starHSV` packed correctly? |
 | Data pack not applied | `/reload` or restart |
 | Resource pack not updating | F3+T |
 | FOV compensation not working | `starFovCompensationStrength` > 0? |
