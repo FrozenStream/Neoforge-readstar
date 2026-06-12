@@ -3,6 +3,7 @@ package git.frozenstream.readstar;
 import com.mojang.blaze3d.pipeline.BlendFunction;
 import com.mojang.blaze3d.pipeline.ColorTargetState;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
+import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.VertexFormat;
 import com.mojang.blaze3d.vertex.VertexFormat.Mode;
 import com.mojang.blaze3d.vertex.VertexFormatElement;
@@ -10,10 +11,11 @@ import com.mojang.blaze3d.vertex.VertexFormatElement;
 import git.frozenstream.readstar.elements.CelestialBodyManager;
 import git.frozenstream.readstar.elements.CelestialBody;
 import git.frozenstream.readstar.elements.MeteorCollector;
-import git.frozenstream.readstar.skybox.ReadStarCloudsRenderer;
 import git.frozenstream.readstar.skybox.ReadstarSkyboxRenderer;
 import git.frozenstream.readstar.sprite.CelestialSpriteSourceProvider;
+import git.frozenstream.readstar.sprite.MoonSpriteSource;
 import git.frozenstream.readstar.sprite.StarSpriteSource;
+import git.frozenstream.readstar.sprite.SunSpriteSource;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.client.resources.model.sprite.AtlasManager;
@@ -44,9 +46,7 @@ import net.neoforged.neoforge.data.event.GatherDataEvent;
 @EventBusSubscriber(modid = ReadStar.MODID, value = Dist.CLIENT)
 public class ReadStarClient {
     // 静态保存天空渲染器实例，以便在多个地方使用
-    private static final ReadstarSkyboxRenderer skyboxRenderer = new ReadstarSkyboxRenderer();
-    /** 当前观测者（地球）的天体实例，由 skybox renderer 在每帧更新 */
-    public static CelestialBody Observer;
+    private static final ReadstarSkyboxRenderer skyboxRenderer = ReadstarSkyboxRenderer.getInstance();
 
     public static final Identifier CELESTIAL_ATLAS_TEXTURE = Identifier.fromNamespaceAndPath(ReadStar.MODID,
             "textures/atlas/celestial.png");
@@ -73,6 +73,24 @@ public class ReadStarClient {
             .add("Offset", OFFSET_ELEMENT)
             .build();
 
+    /**
+     * 自定义管线：彗尾测试渲染，使用 TRIANGLE_STRIP + 半透明混合。
+     * 与 SUNRISE_SUNSET 类似但使用 TRIANGLE_STRIP 模式，适合带状几何体。
+     */
+    public static RenderPipeline COMET_TAIL_PIPELINE;
+
+    /**
+     * 光晕管线：POSITION_TEX_COLOR + OVERLAY 混合。
+     * 纹理为灰度光晕图，顶点色提供 RGB 着色。
+     */
+    public static RenderPipeline HALO_PIPELINE;
+
+    /**
+     * 大气叠加管线：POSITION + TRANSLUCENT 混合。
+     * 复用 SKY 的 TRIANGLE_FAN 顶点缓冲，在全天空范围叠加大气散射色。
+     */
+    public static RenderPipeline ATMOSPHERE_OVERLAY_PIPELINE;
+
     @SubscribeEvent
     static void onRegisterStarPipelines(RegisterRenderPipelinesEvent event) {
         // 自定义管线：使用 star_fov shader（分离 center + billboard offset），
@@ -88,6 +106,43 @@ public class ReadStarClient {
                 .build();
         event.registerPipeline(STAR_TEXTURED_PIPELINE);
         ReadStar.LOGGER.info("Registered custom star pipeline: readstar:star_textured (fov-aware)");
+
+        // 彗尾测试管线：TRIANGLE_STRIP + POSITION_COLOR
+        COMET_TAIL_PIPELINE = RenderPipeline
+                .builder(new RenderPipeline.Snippet[] { RenderPipelines.MATRICES_PROJECTION_SNIPPET })
+                .withLocation(Identifier.fromNamespaceAndPath(ReadStar.MODID, "pipeline/comet_tail"))
+                .withVertexShader(Identifier.fromNamespaceAndPath("minecraft", "core/position_color"))
+                .withFragmentShader(Identifier.fromNamespaceAndPath("minecraft", "core/position_color"))
+                .withColorTargetState(new ColorTargetState(BlendFunction.TRANSLUCENT))
+                .withVertexFormat(DefaultVertexFormat.POSITION_COLOR, Mode.TRIANGLE_STRIP)
+                .build();
+        event.registerPipeline(COMET_TAIL_PIPELINE);
+        ReadStar.LOGGER.info("Registered custom comet tail pipeline: readstar:pipeline/comet_tail");
+
+        // 光晕管线：POSITION_TEX_COLOR + OVERLAY，灰度纹理 × 顶点色
+        HALO_PIPELINE = RenderPipeline
+                .builder(new RenderPipeline.Snippet[] { RenderPipelines.MATRICES_PROJECTION_SNIPPET })
+                .withLocation(Identifier.fromNamespaceAndPath(ReadStar.MODID, "pipeline/halo"))
+                .withVertexShader(Identifier.fromNamespaceAndPath("minecraft", "core/position_tex_color"))
+                .withFragmentShader(Identifier.fromNamespaceAndPath("minecraft", "core/position_tex_color"))
+                .withSampler("Sampler0")
+                .withColorTargetState(new ColorTargetState(BlendFunction.OVERLAY))
+                .withVertexFormat(DefaultVertexFormat.POSITION_TEX_COLOR, Mode.QUADS)
+                .build();
+        event.registerPipeline(HALO_PIPELINE);
+        ReadStar.LOGGER.info("Registered halo pipeline: readstar:pipeline/halo");
+
+        // 大气叠加管线：POSITION + TRANSLUCENT，全天空半透明叠加大气色
+        ATMOSPHERE_OVERLAY_PIPELINE = RenderPipeline
+                .builder(new RenderPipeline.Snippet[] { RenderPipelines.MATRICES_PROJECTION_SNIPPET })
+                .withLocation(Identifier.fromNamespaceAndPath(ReadStar.MODID, "pipeline/atmosphere_overlay"))
+                .withVertexShader(Identifier.fromNamespaceAndPath("minecraft", "core/position"))
+                .withFragmentShader(Identifier.fromNamespaceAndPath("minecraft", "core/position"))
+                .withColorTargetState(new ColorTargetState(BlendFunction.TRANSLUCENT))
+                .withVertexFormat(DefaultVertexFormat.POSITION, Mode.TRIANGLE_FAN)
+                .build();
+        event.registerPipeline(ATMOSPHERE_OVERLAY_PIPELINE);
+        ReadStar.LOGGER.info("Registered atmosphere overlay pipeline: readstar:pipeline/atmosphere_overlay");
     }
 
     public ReadStarClient(ModContainer container) {
@@ -104,6 +159,12 @@ public class ReadStarClient {
         event.register(
                 Identifier.fromNamespaceAndPath(ReadStar.MODID, "star"),
                 StarSpriteSource.CODEC);
+        event.register(
+                Identifier.fromNamespaceAndPath(ReadStar.MODID, "moon_crop"),
+                MoonSpriteSource.CODEC);
+        event.register(
+                Identifier.fromNamespaceAndPath(ReadStar.MODID, "sun"),
+                SunSpriteSource.CODEC);
     }
 
     @SubscribeEvent
@@ -123,18 +184,6 @@ public class ReadStarClient {
     static void onExtractLevelRenderState(ExtractLevelRenderStateEvent event) {
         var level = event.getLevel();
 
-        // ==== 处理星光亮度 ====
-        float starBrightness = event.getRenderState().skyRenderState.starBrightness;
-        // 有理函数映射 [0, ∞) → [0, 1): s·x/(s·x+1)
-        float s = 50.0f;
-        float newStarBrightness = (s * starBrightness) / (s * starBrightness + 1.0f);
-        float fov = event.getCamera().getFov();
-        // FOV 缩小时提升亮度（星星更大但各项发光不变 → 需要更亮）
-        double brightnessFactor = 1.0 + Config.STAR_FOV_BRIGHTNESS_STRENGTH.get() * Math.max(0.0, (70.0 - fov) / 70.0);
-        newStarBrightness = newStarBrightness * (float)brightnessFactor; 
-        ReadStar.LOGGER.debug("Old brightness {}, New brightness: {}", starBrightness, newStarBrightness);
-        event.getRenderState().skyRenderState.starBrightness = newStarBrightness;
-
         // ==== 更新天体位姿 ====
         long gameTime = level.getGameTime();
         long daylightTime = level.getDefaultClockTime();
@@ -142,9 +191,10 @@ public class ReadStarClient {
 
         // ==== 设置观测者 ====
         if (level.dimension() == Level.OVERWORLD) {
+            event.getRenderState().customSkyboxRenderer = skyboxRenderer;
             CelestialBody observer = CelestialBodyManager.getInstance().getCelestialBody("earth");
             if (observer != null) {
-                Observer = observer;
+                skyboxRenderer.setObserver(observer);
                 observer.updateCurrentVec(daylightTime);
             }
         }
@@ -152,7 +202,7 @@ public class ReadStarClient {
         // ==== 处理 skycolor + 日食检测 ====
         int skyColor = event.getRenderState().skyRenderState.skyColor;
 
-        CelestialBody obs = ReadStarClient.Observer;
+        CelestialBody obs = skyboxRenderer.getObserver();
         if (obs != null && obs.hostStar != null) {
             Vector3f observerPos = obs.position;
             float hostSize = CelestialBodyManager.getApparentSize(observerPos, obs.hostStar) / 200.f;
@@ -203,11 +253,6 @@ public class ReadStarClient {
         // 设置 Collector 的当前维度（维度变化时会自动清空旧数据）
         MeteorCollector.getInstance().setCurrentDimension(level.dimension().identifier());
         MeteorCollector.getInstance().tick(gameTime);
-
-        if (level.dimension() == Level.OVERWORLD) {
-            event.getRenderState().customSkyboxRenderer = skyboxRenderer;
-            event.getRenderState().customCloudsRenderer = new ReadStarCloudsRenderer();
-        }
     }
 
     @SubscribeEvent
@@ -230,7 +275,7 @@ public class ReadStarClient {
     static void onRenderGui(RenderGuiEvent.Post event) {
         var renderer = skyboxRenderer.getSkyRenderer();
         if (renderer != null) {
-            renderer.renderHud(event.getGuiGraphics());
+            renderer.renderHud(event.getGuiGraphics(), skyboxRenderer.getObserver());
         }
     }
 }

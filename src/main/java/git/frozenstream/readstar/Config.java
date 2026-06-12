@@ -35,11 +35,11 @@ public class Config {
 
     public static final ModConfigSpec.DoubleValue CELESTIAL_APPARENT_SIZE_FACTOR = BUILDER
             .comment("Celestial body apparent size calculation factor. Larger values make all bodies appear larger. Default: 4000.0")
-            .defineInRange("celestialApparentSizeFactor", 4000.0, 1.0, 100000.0);
+            .defineInRange("celestialApparentSizeFactor", 1000.0, 1.0, 100000.0);
 
     public static final ModConfigSpec.DoubleValue CELESTIAL_APPARENT_SIZE_MIN = BUILDER
             .comment("Minimum apparent size clamp for celestial bodies. Prevents bodies from becoming too small when far away. Default: 1.024")
-            .defineInRange("celestialApparentSizeMin", 1.024, 0.001, 100.0);
+            .defineInRange("celestialApparentSizeMin",0.256, 0.001, 100.0);
 
     static final ModConfigSpec SPEC = BUILDER.build();
 

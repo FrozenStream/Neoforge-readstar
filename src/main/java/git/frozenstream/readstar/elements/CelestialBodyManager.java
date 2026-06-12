@@ -73,7 +73,7 @@ public class CelestialBodyManager {
 
     /**
      * 递归更新所有天体位置，委托给 CelestialBody.updatePosition(t)。
-     * @param t 世界时间
+     * @param t 世界时间（秒）
      */
     public void updatePositions(long t) {
         Root.children.forEach(child -> child.updatePosition(t));
@@ -113,6 +113,10 @@ public class CelestialBodyManager {
     private static final String KEY_AXIS = "axis";
     private static final String KEY_ORBIT = "orbit";
     private static final String KEY_CHILDREN = "children";
+    private static final String KEY_UNSTABLE_DIRTY_SNOWBALL = "unstableDirtySnowball";
+    private static final String KEY_HAS_ATMOSPHERE = "hasAtmosphere";
+    private static final String KEY_ATMOSPHERE_HSV = "atmosphereHSV";
+    private static final String KEY_STAR_HSV = "starHSV";
     
     /**
      * 从 JSON 数据初始化天体系统
@@ -163,10 +167,20 @@ public class CelestialBodyManager {
             int luminance = celestialBodyData.has(KEY_LUMINANCE) ? celestialBodyData.get(KEY_LUMINANCE).getAsInt() : 0;
             Vector3f axis = parseVector3f(celestialBodyData.getAsJsonArray(KEY_AXIS));
             Orbit orbit = parseOrbit(celestialBodyData.getAsJsonObject(KEY_ORBIT));
+            boolean unstableDirtySnowball = celestialBodyData.has(KEY_UNSTABLE_DIRTY_SNOWBALL)
+                    && celestialBodyData.get(KEY_UNSTABLE_DIRTY_SNOWBALL).getAsBoolean();
+            boolean hasAtmosphere = celestialBodyData.has(KEY_HAS_ATMOSPHERE)
+                    && celestialBodyData.get(KEY_HAS_ATMOSPHERE).getAsBoolean();
+            int atmosphereHSV = celestialBodyData.has(KEY_ATMOSPHERE_HSV)
+                    ? celestialBodyData.get(KEY_ATMOSPHERE_HSV).getAsInt()
+                    : 0;
+            int starHSV = celestialBodyData.has(KEY_STAR_HSV)
+                    ? celestialBodyData.get(KEY_STAR_HSV).getAsInt()
+                    : 0;
             
             // ========== 2. 创建天体对象 ==========
             ArrayList<CelestialBody> children = new ArrayList<>();
-            CelestialBody celestialBody = new CelestialBody(name, mass, radius, luminance, axis, orbit, children);
+            CelestialBody celestialBody = new CelestialBody(name, mass, radius, luminance, axis, orbit, children, unstableDirtySnowball, hasAtmosphere, atmosphereHSV, starHSV);
             
             // ========== 3. 设置父子关系 ==========
             celestialBody.parent = (parent != null) ? parent : Root;
@@ -237,4 +251,5 @@ public class CelestialBodyManager {
             orbitData.has("initialMeanAnomaly") ? orbitData.get("initialMeanAnomaly").getAsDouble() : 0
         );
     }
+
 }

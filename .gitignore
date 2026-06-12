@@ -42,3 +42,6 @@ repo/
 
 /net
 /data
+/.data/__pycache__
+/.data/.venv
+/.data/nul

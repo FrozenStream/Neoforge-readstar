@@ -16,6 +16,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 
@@ -97,18 +98,33 @@ public record StarSpriteSource() implements SpriteSource {
             glowPatterns[i] = loadPattern(path, manager);
         }
 
-        Identifier dataPath = Identifier.fromNamespaceAndPath(ReadStar.MODID, "custom/stars/stars.json");
-        Optional<net.minecraft.server.packs.resources.Resource> r = manager.getResource(dataPath);
-        if (r.isEmpty()) { ReadStar.LOGGER.warn("Star data not found: {}", dataPath); return; }
+        // 扫描 stars/ 目录下所有 .json 文件
+        Map<Identifier, net.minecraft.server.packs.resources.Resource> starResources =
+                manager.listResources("stars", id -> id.getPath().endsWith(".json"));
+        if (starResources.isEmpty()) {
+            ReadStar.LOGGER.warn("No star data files found in stars/");
+            return;
+        }
 
-        try (InputStreamReader reader = new InputStreamReader(r.get().open(), StandardCharsets.UTF_8)) {
-            JsonArray arr = JsonParser.parseReader(reader).getAsJsonObject().getAsJsonArray("Stars");
-            Set<Integer> colors = new HashSet<>();
-            for (int i = 0; i < arr.size(); i++) {
-                JsonObject o = arr.get(i).getAsJsonObject();
-                if (o.has("color")) colors.add(o.get("color").getAsInt());
+        Set<Integer> colors = new HashSet<>();
+        for (Map.Entry<Identifier, net.minecraft.server.packs.resources.Resource> entry : starResources.entrySet()) {
+            Identifier resPath = entry.getKey();
+            try (InputStreamReader reader = new InputStreamReader(entry.getValue().open(), StandardCharsets.UTF_8)) {
+                JsonArray arr = JsonParser.parseReader(reader).getAsJsonObject().getAsJsonArray("Stars");
+                if (arr == null) {
+                    ReadStar.LOGGER.warn("No 'Stars' array in: {}", resPath);
+                    continue;
+                }
+                for (int i = 0; i < arr.size(); i++) {
+                    JsonObject o = arr.get(i).getAsJsonObject();
+                    if (o.has("color")) colors.add(o.get("color").getAsInt());
+                }
+            } catch (Exception e) {
+                ReadStar.LOGGER.error("Failed to read star data from {}", resPath, e);
             }
+        }
 
+        try {
             int total = colors.size() * (1 + GLOW_LAYERS.length);
             ReadStar.LOGGER.info("Generating {} sprites ({} colors × 1 core + {} glow layers)", total, colors.size(), GLOW_LAYERS.length);
 
