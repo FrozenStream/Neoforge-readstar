@@ -6,6 +6,8 @@
 
 - **真实星表** — 基于 Gaia DR3（颜色） + BSC5（亮星回退）的 12,000+ 颗真实恒星，逐星独立亮度与光晕
 - **真实天体力学** — 基于开普勒轨道方程的行星系统，支持任意深度嵌套
+- **大气散射模拟** — 基于 HSV 色彩空间的大气颜色与光晕计算，支持全天空叠加和天体辉光
+- **彗星渲染** — 贝塞尔曲线尘埃尾 + 离子尾双尾结构，带动态摆动效果
 - **FOV 感知渲染** — 自定义着色器，FOV 变化时星星屏幕大小保持恒定
 - **零代码扩展** — 放置 PNG 即可为任意天体添加 8 种月相纹理
 - **服务端同步** — 天体配置由服务端统一管理，客户端自动同步
@@ -81,6 +83,10 @@
       "mass": <double>,
       "radius": <double>,
       "luminance": <int>,
+      "unstableDirtySnowball": <bool>,
+      "hasAtmosphere": <bool>,
+      "atmosphereHSV": <int>,
+      "starHSV": <int>,
       "axis": [<x>, <y>, <z>],
       "orbit": {
         "semiMajorAxis": <double>,
@@ -103,6 +109,10 @@
 | `mass` | 质量（kg）。0 = 固定于父节点位置 |
 | `radius` | 半径（m）。视大小 = `max(1.024, radius / distance × factor)` |
 | `luminance` | 自发光亮度 0~15。>0 被识别为恒星，子天体自动向上查找作为 `hostStar` |
+| `unstableDirtySnowball` | 彗星标记。`true` 时渲染双尾结构 |
+| `hasAtmosphere` | 是否有大气层（控制大气叠加和光晕渲染） |
+| `atmosphereHSV` | 大气 HSV 颜色，打包 int（H<<16 \| S<<8 \| V）。H=色相, S=饱和度, V=浓度(0~255) |
+| `starHSV` | 天体自身颜色，同上编码。发光体=发射色，非发光体=表面反射色 |
 | `axis` | 自转轴方向。全零默认 `(0,0,-1)` |
 | `orbit.semiMajorAxis` | 半长轴（m）。0 = 不公转 |
 | `orbit.eccentricity` | 偏心率。0 = 正圆 |
@@ -122,17 +132,20 @@
   "System": {
     "Sun": {
       "mass": 1.989e30, "radius": 6.957e8, "luminance": 15,
+      "unstableDirtySnowball": false, "hasAtmosphere": false, "atmosphereHSV": 0, "starHSV": 2172671,
       "axis": [0, 0, 0],
       "orbit": { 
         "semiMajorAxis": 0, "eccentricity": 0, "inclination": 0, "argumentOfPeriapsis": 0, "longitudeOfAscendingNode": 0, "initialMeanAnomaly": 0 },
       "children": {
         "Earth": {
           "mass": 5.972e24, "radius": 6.371e6, "luminance": 0,
+          "unstableDirtySnowball": false, "hasAtmosphere": true, "atmosphereHSV": 9738751, "starHSV": 9732275,
           "axis": [0, 0, 0],
           "orbit": { "semiMajorAxis": 1.496e11, "eccentricity": 0.0167, "inclination": 0, "argumentOfPeriapsis": 1.796, "longitudeOfAscendingNode": 0, "initialMeanAnomaly": 6.240 },
           "children": {
             "Moon": {
               "mass": 7.342e22, "radius": 1.737e6, "luminance": 0,
+              "unstableDirtySnowball": false, "hasAtmosphere": false, "atmosphereHSV": 0, "starHSV": 1707468,
               "axis": [0, 0, 0.5],
               "orbit": { "semiMajorAxis": 3.844e8, "eccentricity": 0.0549, "inclination": 0.0899, "argumentOfPeriapsis": 0, "longitudeOfAscendingNode": 0, "initialMeanAnomaly": 0 },
               "children": {}
@@ -141,6 +154,7 @@
         },
         "Mars": {
           "mass": 6.417e23, "radius": 3.390e6, "luminance": 0,
+          "unstableDirtySnowball": false, "hasAtmosphere": true, "atmosphereHSV": 1336835, "starHSV": 1356697,
           "axis": [0, 0, 0],
           "orbit": { "semiMajorAxis": 2.279e11, "eccentricity": 0.0934, "inclination": 0.0323, "argumentOfPeriapsis": 0, "longitudeOfAscendingNode": 0.865, "initialMeanAnomaly": 0 },
           "children": {}
@@ -159,9 +173,51 @@
 - `gameTime` 控制公转，`daylightTime`（0~24000）控制自转天顶
 - 月相由观测者-卫星-恒星几何关系自动计算
 
-### 太阳纹理
+### 大气系统
 
-单张贴图，放 `assets/<命名空间>/textures/environment/celestial/luminous/<名称>.png`。`readstar:luminous/white_sun.png` 仅作为占位示例，替换为自己的贴图即可。
+每个天体可定义大气颜色（HSV）和自身颜色（HSV），均为打包 int：
+
+```
+atmosphereHSV / starHSV = (H << 16) | (S << 8) | V
+```
+
+| 分量 | 位 | 范围 | 含义 |
+|------|-----|------|------|
+| H (Hue) | 16-23 | 0~255 | 色相（0=红 → 255 循环回红） |
+| S (Saturation) | 8-15 | 0~255 | 饱和度（0=灰白, 255=纯色） |
+| V (Value) | 0-7 | 0~255 | 浓度/亮度（atmosphereHSV=大气浓度, starHSV=天体亮度） |
+
+**示例值**：
+
+| 天体 | atmosphereHSV | starHSV | 说明 |
+|------|:--:|:--:|------|
+| Sun | `0` | `2172671` | 无大气，G 型黄白星 |
+| Earth | `9738751` | `9732275` | 蓝天 (H=0.58, S=0.6, V=1.0) |
+| Mars | `1336835` | `1356697` | 淡红棕大气 (V=0.01, 极稀薄) |
+
+代码中通过 `CelestialBody.packHSV(h, s, v)` 打包，`getHueFloat/ getSaturationFloat/ getValueFloat` 解码。
+
+**光晕计算**（`computeGlowColor`）：发光体的光晕色 = 星光 × 大气散射。色相向大气偏移，饱和度和明度微增。
+
+**渲染分层**：
+```
+1. renderSkyDisc     → 原版 biome 天空底色
+2. 天体 + 星星        → luminous / non-luminous + 星表
+3. renderAtmosphereOverlay → 半透明全天空大气叠加（夜晚自动淡出）
+```
+
+### 纹理目录
+
+天体纹理按类别分目录存放，由 `celestial.json` 图集自动扫描：
+
+```
+assets/<命名空间>/textures/environment/celestial/
+├── luminous/<名称>.png       # 发光天体（单张贴图，无月相）
+├── non-luminous/<名称>/      # 非发光天体（8 月相 PNG）
+└── halo.png                  # 光晕纹理（灰度径向衰减）
+```
+
+发光天体只需一张 PNG，放 `luminous/` 目录。非发光天体需 8 张月相 PNG，放 `non-luminous/<名称>/`。
 
 ---
 
@@ -311,6 +367,8 @@ assets/readstar/textures/environment/celestial/non-luminous/jupiter/
 | 星星紫黑贴图 | `star_base.png` 是否为 32-bit RGBA |
 | 月相紫黑 | 对应 PNG 缺失或文件名拼写错误 |
 | 天体不显示 | `system.json` 中是否有 `hostStar`（自身或祖先 luminance>0） |
+| 光晕不显示 | `halo.png` 是否在 `textures/environment/celestial/` |
+| 大气颜色异常 | `atmosphereHSV` / `starHSV` 打包值是否正确 |
 | 数据包未生效 | `/reload` 或重启 |
 | 资源包未更新 | F3+T |
 | FOV 补偿不生效 | 配置文件 `starFovCompensationStrength` 是否 > 0 |

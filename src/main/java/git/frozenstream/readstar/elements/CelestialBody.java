@@ -45,6 +45,31 @@ public class CelestialBody {
      */
     public boolean unstableDirtySnowball;
 
+    // ==================== 大气属性 ====================
+
+    /**
+     * 是否有大气层
+     */
+    public boolean hasAtmosphere;
+
+    /**
+     * 大气 HSV 颜色（打包 int，各分量 0~255）
+     * <pre>
+     *   bits 16-23 : Hue（色相，0=红 → 255 循环回红）
+     *   bits  8-15 : Saturation（饱和度，0=灰白 → 255=纯色）
+     *   bits   0-7 : Value（浓度/强度，0=无大气 → 255=最浓）
+     * </pre>
+     * 示例：地球大气 (H=0.58, S=0.6, V=1.0) → 0x9499FF
+     */
+    public int atmosphereHSV;
+
+    /**
+     * 天体自身颜色（HSV 打包 int，与 atmosphereHSV 相同编码）
+     * 发光体：发射光谱色（如太阳 = 黄白）
+     * 非发光体：表面反射色（如地球 = 蓝绿，火星 = 红棕）
+     */
+    public int starHSV;
+
     /**
      * 天体的轨道参数，定义其围绕父天体的运动轨迹
      */
@@ -96,7 +121,68 @@ public class CelestialBody {
     /**
      * 虚拟根节点，用于构建天体层级树的根
      */
-    public static CelestialBody Root = new CelestialBody("VOID", 0, 0, 0, null, null, new ArrayList<>(), false);
+    public static CelestialBody Root = new CelestialBody("VOID", 0, 0, 0, null, null, new ArrayList<>(), false, false, 0, 0);
+
+    // ==================== 大气 HSV 编解码 ====================
+
+    /** 打包 HSV → int（各分量 0~255） */
+    public static int packHSV(int hue, int saturation, int value) {
+        return ((hue & 0xFF) << 16) | ((saturation & 0xFF) << 8) | (value & 0xFF);
+    }
+
+    /** 打包 HSV → int（各分量 0.0~1.0） */
+    public static int packHSV(float hue, float saturation, float value) {
+        return packHSV((int) (hue * 255), (int) (saturation * 255), (int) (value * 255));
+    }
+
+    /** 提取 Hue（0~255） */
+    public static int getHue(int hsv) { return (hsv >> 16) & 0xFF; }
+
+    /** 提取 Saturation（0~255） */
+    public static int getSaturation(int hsv) { return (hsv >> 8) & 0xFF; }
+
+    /** 提取 Value（0~255） */
+    public static int getValue(int hsv) { return hsv & 0xFF; }
+
+    /** 提取 Hue（0.0~1.0） */
+    public static float getHueFloat(int hsv) { return getHue(hsv) / 255f; }
+
+    /** 提取 Saturation（0.0~1.0） */
+    public static float getSaturationFloat(int hsv) { return getSaturation(hsv) / 255f; }
+
+    /** 提取 Value（0.0~1.0） */
+    public static float getValueFloat(int hsv) { return getValue(hsv) / 255f; }
+
+    /**
+     * 计算发光体在大气中的光晕颜色。
+     * 光晕 = 星光光谱 × 大气散射效率。
+     * <ul>
+     *   <li>色相：星光色相向大气色相偏移（散射着色）</li>
+     *   <li>饱和度：星光饱和 + 大气散射增量</li>
+     *   <li>明度：星光亮度 + 大气散射增亮</li>
+     * </ul>
+     *
+     * @param starHSV       发光天体自身 HSV
+     * @param atmosphereHSV 观测者大气 HSV
+     * @return 光晕 HSV（打包 int）
+     */
+    public static int computeGlowColor(int starHSV, int atmosphereHSV) {
+        float starH = getHueFloat(starHSV);
+        float starS = getSaturationFloat(starHSV);
+        float starV = getValueFloat(starHSV);
+        float atmH = getHueFloat(atmosphereHSV);
+        float atmS = getSaturationFloat(atmosphereHSV);
+        float atmV = getValueFloat(atmosphereHSV);
+
+        // 大气散射着色：色相向大气偏移
+        float glowH = starH + (atmH - starH) * atmS * atmV * 0.25f;
+        // 饱和度：大气散射增加颜色纯度
+        float glowS = Math.min(1f, starS + atmS * atmV * 0.2f);
+        // 明度：大气散射增亮（散射光叠加）
+        float glowV = Math.min(1f, starV + atmV * atmS * 0.15f);
+
+        return packHSV(glowH, glowS, glowV);
+    }
 
     /**
      * 构造一个完整的天体
@@ -109,8 +195,13 @@ public class CelestialBody {
      * @param orbit                  轨道参数（定义围绕父天体的运动）
      * @param children               子天体列表
      * @param unstableDirtySnowball  是否为"不稳定的脏雪球"（彗星类天体）
+     * @param hasAtmosphere          是否有大气层
+     * @param atmosphereHSV          大气 HSV 颜色（打包 int）
+     * @param starHSV                天体自身颜色（打包 int，发光体=发射色，非发光体=表面色）
      */
-    public CelestialBody(String name, double mass, double radius, int luminance, Vector3f rotationAxis, Orbit orbit, ArrayList<CelestialBody> children, boolean unstableDirtySnowball) {
+    public CelestialBody(String name, double mass, double radius, int luminance, Vector3f rotationAxis, Orbit orbit,
+                         ArrayList<CelestialBody> children, boolean unstableDirtySnowball,
+                         boolean hasAtmosphere, int atmosphereHSV, int starHSV) {
         this.name = name;
         this.mass = mass;
         this.radius = radius;
@@ -123,6 +214,9 @@ public class CelestialBody {
         this.parent = null;
         this.children = children;
         this.unstableDirtySnowball = unstableDirtySnowball;
+        this.hasAtmosphere = hasAtmosphere;
+        this.atmosphereHSV = atmosphereHSV;
+        this.starHSV = starHSV;
     }
 
     /**
