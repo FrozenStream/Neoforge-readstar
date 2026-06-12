@@ -80,10 +80,16 @@ public class ReadStarClient {
     public static RenderPipeline COMET_TAIL_PIPELINE;
 
     /**
-     * 参照原版 CELESTIAL 管线，但使用 TRANSLUCENT 混合模式，
-     * 用于 renderBody 绘制半透明天体（月相叠加等）。
+     * 光晕管线：POSITION_TEX_COLOR + OVERLAY 混合。
+     * 纹理为灰度光晕图，顶点色提供 RGB 着色。
      */
-    public static RenderPipeline CELESTIAL_TRANSLUCENT_PIPELINE;
+    public static RenderPipeline HALO_PIPELINE;
+
+    /**
+     * 大气叠加管线：POSITION + TRANSLUCENT 混合。
+     * 复用 SKY 的 TRIANGLE_FAN 顶点缓冲，在全天空范围叠加大气散射色。
+     */
+    public static RenderPipeline ATMOSPHERE_OVERLAY_PIPELINE;
 
     @SubscribeEvent
     static void onRegisterStarPipelines(RegisterRenderPipelinesEvent event) {
@@ -113,18 +119,30 @@ public class ReadStarClient {
         event.registerPipeline(COMET_TAIL_PIPELINE);
         ReadStar.LOGGER.info("Registered custom comet tail pipeline: readstar:pipeline/comet_tail");
 
-        // 天体半透明管线：参照 CELESTIAL（position_tex + QUADS），但使用 TRANSLUCENT 混合
-        CELESTIAL_TRANSLUCENT_PIPELINE = RenderPipeline
+        // 光晕管线：POSITION_TEX_COLOR + OVERLAY，灰度纹理 × 顶点色
+        HALO_PIPELINE = RenderPipeline
                 .builder(new RenderPipeline.Snippet[] { RenderPipelines.MATRICES_PROJECTION_SNIPPET })
-                .withLocation(Identifier.fromNamespaceAndPath(ReadStar.MODID, "pipeline/celestial_translucent"))
-                .withVertexShader(Identifier.fromNamespaceAndPath("minecraft", "core/position_tex"))
-                .withFragmentShader(Identifier.fromNamespaceAndPath("minecraft", "core/position_tex"))
+                .withLocation(Identifier.fromNamespaceAndPath(ReadStar.MODID, "pipeline/halo"))
+                .withVertexShader(Identifier.fromNamespaceAndPath("minecraft", "core/position_tex_color"))
+                .withFragmentShader(Identifier.fromNamespaceAndPath("minecraft", "core/position_tex_color"))
                 .withSampler("Sampler0")
-                .withColorTargetState(new ColorTargetState(BlendFunction.TRANSLUCENT))
-                .withVertexFormat(DefaultVertexFormat.POSITION_TEX, Mode.QUADS)
+                .withColorTargetState(new ColorTargetState(BlendFunction.OVERLAY))
+                .withVertexFormat(DefaultVertexFormat.POSITION_TEX_COLOR, Mode.QUADS)
                 .build();
-        event.registerPipeline(CELESTIAL_TRANSLUCENT_PIPELINE);
-        ReadStar.LOGGER.info("Registered celestial translucent pipeline: readstar:pipeline/celestial_translucent");
+        event.registerPipeline(HALO_PIPELINE);
+        ReadStar.LOGGER.info("Registered halo pipeline: readstar:pipeline/halo");
+
+        // 大气叠加管线：POSITION + TRANSLUCENT，全天空半透明叠加大气色
+        ATMOSPHERE_OVERLAY_PIPELINE = RenderPipeline
+                .builder(new RenderPipeline.Snippet[] { RenderPipelines.MATRICES_PROJECTION_SNIPPET })
+                .withLocation(Identifier.fromNamespaceAndPath(ReadStar.MODID, "pipeline/atmosphere_overlay"))
+                .withVertexShader(Identifier.fromNamespaceAndPath("minecraft", "core/position"))
+                .withFragmentShader(Identifier.fromNamespaceAndPath("minecraft", "core/position"))
+                .withColorTargetState(new ColorTargetState(BlendFunction.TRANSLUCENT))
+                .withVertexFormat(DefaultVertexFormat.POSITION, Mode.TRIANGLE_FAN)
+                .build();
+        event.registerPipeline(ATMOSPHERE_OVERLAY_PIPELINE);
+        ReadStar.LOGGER.info("Registered atmosphere overlay pipeline: readstar:pipeline/atmosphere_overlay");
     }
 
     public ReadStarClient(ModContainer container) {

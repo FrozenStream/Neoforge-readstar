@@ -82,6 +82,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
     private final Map<String, GpuBuffer> luminousBuffers = new HashMap<>();
     private final GpuBuffer sunriseBuffer;
     private final GpuBuffer endFlashBuffer;
+    private final GpuBuffer haloBuffer;
     private final RenderSystem.AutoStorageIndexBuffer quadIndices = RenderSystem
             .getSequentialBuffer(VertexFormat.Mode.QUADS);
     private final AbstractTexture endSkyTexture;
@@ -107,6 +108,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         this.endSkyTexture = this.getTexture(textureManager, END_SKY_LOCATION);
         this.endFlashBuffer = buildEndFlashQuad(this.celestialsAtlas);
         this.sunriseBuffer = this.buildSunriseFan();
+        this.haloBuffer = buildHaloQuad(this.celestialsAtlas);
 
         try (ByteBufferBuilder builder = ByteBufferBuilder.exactlySized(10 * DefaultVertexFormat.POSITION.getVertexSize())) {
             BufferBuilder bufferBuilder = new BufferBuilder(builder, VertexFormat.Mode.TRIANGLE_FAN, DefaultVertexFormat.POSITION);
@@ -235,6 +237,28 @@ public class ReadstarSkyRenderer implements AutoCloseable {
 
     private static GpuBuffer buildEndFlashQuad(TextureAtlas atlas) {
         return buildCelestialQuad("End flash quad", atlas.getSprite(END_FLASH_SPRITE));
+    }
+
+    /**
+     * 构建光晕 quad 缓冲（POSITION_TEX_COLOR，灰度光晕纹理 × 顶点色）。
+     * 初始顶点色为白色，运行时通过 DynamicTransforms 的 color 乘数着色。
+     */
+    private static GpuBuffer buildHaloQuad(TextureAtlas atlas) {
+        Identifier haloId = Identifier.fromNamespaceAndPath(ReadStar.MODID, "environment/celestial/halo");
+        TextureAtlasSprite sprite = atlas.getSprite(haloId);
+        VertexFormat format = DefaultVertexFormat.POSITION_TEX_COLOR;
+        int white = ARGB.color(255, 255, 255, 255);
+
+        try (ByteBufferBuilder bb = ByteBufferBuilder.exactlySized(4 * format.getVertexSize())) {
+            BufferBuilder buf = new BufferBuilder(bb, VertexFormat.Mode.QUADS, format);
+            buf.addVertex(-1.0F, 0.0F, -1.0F).setUv(sprite.getU0(), sprite.getV0()).setColor(white);
+            buf.addVertex( 1.0F, 0.0F, -1.0F).setUv(sprite.getU1(), sprite.getV0()).setColor(white);
+            buf.addVertex( 1.0F, 0.0F,  1.0F).setUv(sprite.getU1(), sprite.getV1()).setColor(white);
+            buf.addVertex(-1.0F, 0.0F,  1.0F).setUv(sprite.getU0(), sprite.getV1()).setColor(white);
+            try (MeshData mesh = buf.buildOrThrow()) {
+                return RenderSystem.getDevice().createBuffer(() -> "Halo quad", 32, mesh.vertexBuffer());
+            }
+        }
     }
 
     private static GpuBuffer buildCelestialQuad(String name, TextureAtlasSprite sprite) {
@@ -542,6 +566,120 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         modelViewStack.popMatrix();
     }
 
+    /**
+     * 全天空大气叠加层：POSITION TRIANGLE_FAN（复用 topSkyBuffer）+ TRANSLUCENT 混合。
+     * 在星星和天体之后渲染，模拟大气散射在整个天空上的柔和着色。
+     *
+     * @param observer 观测者天体（取其 atmosphereHSV）
+     */
+    public void renderAtmosphereOverlay(CelestialBody observer, int skyColor) {
+        if (observer == null || !observer.hasAtmosphere) return;
+
+        int hsv = observer.atmosphereHSV;
+        float v = CelestialBody.getValueFloat(hsv);
+        if (v <= 0f) return;
+
+        // 天空亮度（白天→1，夜晚→0），平滑过渡，无硬截断
+        float skyBrightness = Math.max(ARGB.red(skyColor), Math.max(ARGB.green(skyColor), ARGB.blue(skyColor))) / 255f;
+
+        float[] rgb = hsvToRgb(
+                CelestialBody.getHueFloat(hsv),
+                CelestialBody.getSaturationFloat(hsv),
+                1.0f);
+        // alpha：浓度 × 天空亮度 × 0.08，夜晚自动→0，黄昏平滑过渡
+        float alpha = v * skyBrightness * 0.08f;
+
+        GpuBufferSlice dynamicTransforms = RenderSystem.getDynamicUniforms()
+                .writeTransform(RenderSystem.getModelViewMatrix(),
+                        new Vector4f(rgb[0], rgb[1], rgb[2], alpha), new Vector3f(),
+                        new Matrix4f());
+        GpuTextureView colorTexture = Minecraft.getInstance().getMainRenderTarget().getColorTextureView();
+        GpuTextureView depthTexture = Minecraft.getInstance().getMainRenderTarget().getDepthTextureView();
+
+        try (RenderPass renderPass = RenderSystem.getDevice()
+                .createCommandEncoder()
+                .createRenderPass(() -> "Atmosphere overlay", colorTexture, OptionalInt.empty(), depthTexture,
+                        OptionalDouble.empty())) {
+            renderPass.setPipeline(ReadStarClient.ATMOSPHERE_OVERLAY_PIPELINE);
+            RenderSystem.bindDefaultUniforms(renderPass);
+            renderPass.setUniform("DynamicTransforms", dynamicTransforms);
+            renderPass.setVertexBuffer(0, this.topSkyBuffer);
+            renderPass.draw(0, 10);
+        }
+    }
+
+    /**
+     * 根据观测者天体的大气 HSV 属性，将大气颜色混合到原版天空颜色中。
+     *
+     * @param skyColor 原版计算的天空颜色（ARGB）
+     * @param observer 观测者所在天体
+     * @return 混合后的天空颜色
+     */
+    private static int blendAtmosphereColor(int skyColor, CelestialBody observer) {
+        if (observer == null || !observer.hasAtmosphere) {
+            return skyColor;
+        }
+
+        int hsv = observer.atmosphereHSV;
+        float v = CelestialBody.getValueFloat(hsv);
+        if (v <= 0f) return skyColor;
+
+        // 提取大气 HSV → RGB
+        float[] atmRgb = hsvToRgb(
+                CelestialBody.getHueFloat(hsv),
+                CelestialBody.getSaturationFloat(hsv),
+                1.0f);
+
+        // 提取原版天空颜色 RGB
+        float origR = ARGB.red(skyColor) / 255f;
+        float origG = ARGB.green(skyColor) / 255f;
+        float origB = ARGB.blue(skyColor) / 255f;
+
+        // 天空亮度（夜间 → 0，白昼 → 1），防止夜晚大气着色
+        float skyBrightness = Math.max(origR, Math.max(origG, origB));
+
+        // 混合权重：浓度 × 强度系数 × 天空亮度（夜晚自动归零）
+        float blend = Mth.clamp(v * 0.6f * skyBrightness, 0f, 1f);
+        float sat = CelestialBody.getSaturationFloat(hsv);
+
+        // lerp 原版颜色 → 大气颜色
+        float r = origR + (atmRgb[0] - origR) * blend * sat;
+        float g = origG + (atmRgb[1] - origG) * blend * sat;
+        float b = origB + (atmRgb[2] - origB) * blend * sat;
+
+        return ARGB.color(255,
+                (int) Mth.clamp(r * 255f, 0, 255),
+                (int) Mth.clamp(g * 255f, 0, 255),
+                (int) Mth.clamp(b * 255f, 0, 255));
+    }
+
+    /**
+     * HSV → RGB 转换。
+     * @param hue 色相 (0.0~1.0)
+     * @param saturation 饱和度 (0.0~1.0)
+     * @param value 明度 (0.0~1.0)
+     * @return float[3] {r, g, b}，各分量 0.0~1.0
+     */
+    private static float[] hsvToRgb(float hue, float saturation, float value) {
+        hue = hue % 1.0f;
+        if (hue < 0) hue += 1.0f;
+
+        int h = (int) (hue * 6);
+        float f = hue * 6 - h;
+        float p = value * (1 - saturation);
+        float q = value * (1 - f * saturation);
+        float t = value * (1 - (1 - f) * saturation);
+
+        return switch (h) {
+            case 0 -> new float[] { value, t, p };
+            case 1 -> new float[] { q, value, p };
+            case 2 -> new float[] { p, value, t };
+            case 3 -> new float[] { p, q, value };
+            case 4 -> new float[] { t, p, value };
+            default -> new float[] { value, p, q };
+        };
+    }
+
     public void renderCelestialAndStars(PoseStack poseStack, float rainBrightness, float starBrightness, CelestialBody observer, long gameTime) {
         CelestialBodyManager manager = CelestialBodyManager.getInstance();
         poseStack.pushPose();
@@ -570,14 +708,6 @@ public class ReadstarSkyRenderer implements AutoCloseable {
             hasFrame = true;
         }
 
-        // ---- COMETS（彗星尾部渲染） ----
-        renderComets(manager, observerPos, rainBrightness, poseStack, gameTime);
-
-        // ===== STARS (世界坐标已固定，被 frameQuat 整体旋转) =====
-        if (effectiveBrightness > 0.0F) {
-            this.renderStars(effectiveBrightness, poseStack);
-        }
-
         // ===== 在天球框架内各自指向世界坐标方向 =====
         if (hasFrame && observerPos != null) {
             // ---- ALL CELESTIAL BODIES（统一渲染 luminous + non-luminous） ----
@@ -603,13 +733,26 @@ public class ReadstarSkyRenderer implements AutoCloseable {
                     float size = CelestialBodyManager.getApparentSize(observerPos, body);
                     poseStack.pushPose();
                     poseStack.mulPose(new Quaternionf().rotateTo(new Vector3f(0, 1, 0), toWorld));
+
+                    // 发光体 + 观测者大气 → 渲染光晕
+                    if (body.luminance > 0 && observer.hasAtmosphere && observer.atmosphereHSV != 0) {
+                        int glowHSV = CelestialBody.computeGlowColor(body.starHSV, observer.atmosphereHSV);
+                        renderGlow(glowHSV, size * 3f, rainBrightness, poseStack);
+                    }
+
                     renderBody(body.name, buffer, phase, size, rainBrightness, poseStack);
                     poseStack.popPose();
                 }
             }
         }
 
-        
+        // ---- COMETS（彗星尾部渲染） ----
+        renderComets(manager, observerPos, rainBrightness, poseStack, gameTime);
+
+        // ===== STARS (世界坐标已固定，被 frameQuat 整体旋转) =====
+        if (effectiveBrightness > 0.0F) {
+            this.renderStars(effectiveBrightness, poseStack);
+        }
 
         poseStack.popPose();
     }
@@ -766,7 +909,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         try (RenderPass renderPass = RenderSystem.getDevice()
                 .createCommandEncoder()
                 .createRenderPass(() -> "Sky " + name, color, OptionalInt.empty(), depth, OptionalDouble.empty())) {
-            renderPass.setPipeline(ReadStarClient.CELESTIAL_TRANSLUCENT_PIPELINE);
+            renderPass.setPipeline(RenderPipelines.CELESTIAL);
             RenderSystem.bindDefaultUniforms(renderPass);
             renderPass.setUniform("DynamicTransforms", dynamicTransforms);
             renderPass.bindTexture("Sampler0", this.celestialsAtlas.getTextureView(), this.celestialsAtlas.getSampler());
@@ -777,7 +920,53 @@ public class ReadstarSkyRenderer implements AutoCloseable {
 
         modelViewStack.popMatrix();
     }
-    
+
+    /**
+     * 渲染发光体在大气中的光晕。
+     * 使用灰度光晕纹理（halo.png，白色中心→透明边缘）+ POSITION_TEX_COLOR 管线，
+     * 顶点色统一设为 glowHSV→RGB，通过纹理的 alpha 通道实现柔和衰减。
+     *
+     * @param glowHSV       光晕 HSV（由 computeGlowColor 计算）
+     * @param size          光晕尺寸（通常为天体视大小的 3~5 倍）
+     * @param rainBrightness 雨天衰减
+     * @param poseStack     PoseStack 变换
+     */
+    private void renderGlow(int glowHSV, float size, float rainBrightness, PoseStack poseStack) {
+        float h = CelestialBody.getHueFloat(glowHSV);
+        float s = CelestialBody.getSaturationFloat(glowHSV);
+        float v = CelestialBody.getValueFloat(glowHSV);
+
+        // HSV → RGB，alpha 由 V × rainBrightness 控制
+        float[] rgb = hsvToRgb(h, s, 1.0f);
+        float alpha = v * rainBrightness * 0.2f;
+
+        Matrix4fStack modelViewStack = RenderSystem.getModelViewStack();
+        modelViewStack.pushMatrix();
+        modelViewStack.mul(poseStack.last().pose());
+        modelViewStack.translate(0.0F, 100.0F, 0.0F);
+        modelViewStack.scale(size, -1.0F, size);
+        GpuBufferSlice dynamicTransforms = RenderSystem.getDynamicUniforms()
+                .writeTransform(modelViewStack, new Vector4f(rgb[0], rgb[1], rgb[2], alpha), new Vector3f(),
+                        new Matrix4f());
+        GpuTextureView color = Minecraft.getInstance().getMainRenderTarget().getColorTextureView();
+        GpuTextureView depth = Minecraft.getInstance().getMainRenderTarget().getDepthTextureView();
+        GpuBuffer indexBuffer = this.quadIndices.getBuffer(6);
+
+        try (RenderPass renderPass = RenderSystem.getDevice()
+                .createCommandEncoder()
+                .createRenderPass(() -> "Glow", color, OptionalInt.empty(), depth, OptionalDouble.empty())) {
+            renderPass.setPipeline(ReadStarClient.HALO_PIPELINE);
+            RenderSystem.bindDefaultUniforms(renderPass);
+            renderPass.setUniform("DynamicTransforms", dynamicTransforms);
+            renderPass.bindTexture("Sampler0", this.celestialsAtlas.getTextureView(), this.celestialsAtlas.getSampler());
+            renderPass.setVertexBuffer(0, this.haloBuffer);
+            renderPass.setIndexBuffer(indexBuffer, this.quadIndices.type());
+            renderPass.drawIndexed(0, 0, 6, 1);
+        }
+
+        modelViewStack.popMatrix();
+    }
+
     private final float skyHeight = 100f;
     private final double AU = 1.496e11;
     // 尾部参数（所有彗星共享）
@@ -1233,6 +1422,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         this.endSkyBuffer.close();
         this.sunriseBuffer.close();
         this.endFlashBuffer.close();
+        this.haloBuffer.close();
         this.nonluminousBuffers.values().forEach(GpuBuffer::close);
         this.luminousBuffers.values().forEach(GpuBuffer::close);
     }
