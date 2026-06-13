@@ -7,11 +7,14 @@ import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.VertexFormat;
 import com.mojang.blaze3d.vertex.VertexFormat.Mode;
 import com.mojang.blaze3d.vertex.VertexFormatElement;
+import com.mojang.brigadier.arguments.FloatArgumentType;
+import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 
 import git.frozenstream.readstar.elements.CelestialBodyManager;
 import git.frozenstream.readstar.elements.CelestialBody;
 import git.frozenstream.readstar.elements.MeteorCollector;
 import git.frozenstream.readstar.skybox.ReadstarSkyboxRenderer;
+import git.frozenstream.readstar.skybox.ReadstarSkyRenderer;
 import git.frozenstream.readstar.sprite.CelestialSpriteSourceProvider;
 import git.frozenstream.readstar.sprite.MoonSpriteSource;
 import git.frozenstream.readstar.sprite.StarSpriteSource;
@@ -19,6 +22,8 @@ import git.frozenstream.readstar.sprite.SunSpriteSource;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.client.resources.model.sprite.AtlasManager;
+import net.minecraft.commands.Commands;
+import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.util.ARGB;
 import net.minecraft.world.level.Level;
@@ -34,6 +39,7 @@ import net.neoforged.neoforge.client.event.ExtractLevelRenderStateEvent;
 import net.neoforged.neoforge.client.event.RegisterRenderPipelinesEvent;
 import net.neoforged.neoforge.client.event.RegisterSpriteSourcesEvent;
 import net.neoforged.neoforge.client.event.RegisterTextureAtlasesEvent;
+import net.neoforged.neoforge.client.event.RegisterClientCommandsEvent;
 import net.neoforged.neoforge.client.event.RenderGuiEvent;
 import net.neoforged.neoforge.client.gui.ConfigurationScreen;
 import net.neoforged.neoforge.client.gui.IConfigScreenFactory;
@@ -266,6 +272,41 @@ public class ReadStarClient {
         // 仅注册单个 provider（Celestial provider 同时负责 star atlas），避免数据生成阶段 Duplicate
         // provider 错误
         event.createProvider(CelestialSpriteSourceProvider::new);
+    }
+
+    /**
+     * 注册客户端命令：/readstar skybox vmag &lt;0~10&gt;
+     * 按视星等阈值重建星星渲染缓冲
+     */
+    @SubscribeEvent
+    static void onRegisterClientCommands(RegisterClientCommandsEvent event) {
+        event.getDispatcher().register(
+            Commands.literal("readstar")
+                .then(Commands.literal("skybox")
+                    .then(Commands.literal("vmag")
+                        .then(Commands.argument("value", FloatArgumentType.floatArg(0.0f, 10.0f))
+                            .executes(ctx -> {
+                                float vmag = FloatArgumentType.getFloat(ctx, "value");
+                                ReadstarSkyRenderer renderer = skyboxRenderer.getSkyRenderer();
+                                if (renderer != null) {
+                                    renderer.rebuildStarBuffer(vmag);
+                                    ctx.getSource().sendSuccess(
+                                        () -> Component.literal(
+                                            "§a已按 Vmag ≤ " + String.format("%.1f", vmag)
+                                            + " 重建星星缓冲（当前阈值: " + String.format("%.1f", renderer.getMaxVmag()) + "）"),
+                                        false
+                                    );
+                                } else {
+                                    ctx.getSource().sendFailure(
+                                        Component.literal("§c天空渲染器未初始化，请等待资源加载完成")
+                                    );
+                                }
+                                return 1;
+                            })
+                        )
+                    )
+                )
+        );
     }
 
     /**

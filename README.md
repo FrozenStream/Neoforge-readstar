@@ -60,9 +60,9 @@
 
 | 参数 | 公式 | 说明 |
 |------|------|------|
-| Alpha | `clamp(1 - max(0, Vmag-3)/12, 0.4, 1)` | Vmag ≤ 3 全亮 |
-| RGB | `clamp(1 - max(0, Vmag-1)/19, 0.7, 1)` | Vmag ≤ 1 全亮 |
-| 大小 | `clamp(1 - Vmag/12, 0.5, 1) × starCoreSize` | 越暗越小 |
+| Alpha | `10^(-0.05 × max(0, Vmag-1))` | 普森公式，vmag≤1 全亮 |
+| RGB | 同 Alpha | 颜色和透明度同衰减 |
+| 大小 | `max(10^(-0.05 × max(0, Vmag-2)), 0.3) × starCoreSize` | 暗星保持最小可见尺寸 |
 
 光晕仅 Vmag < 2.0 渲染，分三级：`< 0.5 → 高 / < 1.5 → 中 / < 2.0 → 低`。
 
@@ -348,6 +348,26 @@ assets/readstar/textures/environment/celestial/non-luminous/jupiter/
 ## 网络同步
 
 服务端加载 `data/readstar/celestial/*.json`，通过 `readstar:planet_system` 包广播到客户端。客户端 `CelestialBodyManager.initializeFromJson()` 解析并构建天体树。
+
+---
+
+## 命令
+
+| 命令 | 参数 | 说明 |
+|------|------|------|
+| `/readstar skybox vmag <0~10>` | `vmag` — 视星等上限 | 按 Vmag 阈值重建星星渲染缓冲。仅显示 `Vmag ≤ 阈值` 的恒星。默认 `6.0`（肉眼可见极限）。客户端命令，即时生效。 |
+| `/readstar message all <消息>` | `消息` — 文本 | 向所有玩家广播消息（服务端命令，需 OP 权限） |
+| `/readstar message player <玩家> <消息>` | `玩家` — 目标, `消息` — 文本 | 向指定玩家发送消息（服务端命令，需 OP 权限） |
+
+### Vmag 参考
+
+| Vmag | 可见星数（约） | 说明 |
+|------|:--:|------|
+| 1 | 20 | 最亮恒星 |
+| 3 | 300 | 城市夜空 |
+| 6 | 5,000 | 肉眼极限（默认） |
+| 8 | 40,000 | 双筒望远镜 |
+| 10 | 300,000+ | 全部星表 |
 
 ---
 
