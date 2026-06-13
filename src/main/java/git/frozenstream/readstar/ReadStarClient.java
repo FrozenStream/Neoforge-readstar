@@ -8,8 +8,9 @@ import com.mojang.blaze3d.vertex.VertexFormat;
 import com.mojang.blaze3d.vertex.VertexFormat.Mode;
 import com.mojang.blaze3d.vertex.VertexFormatElement;
 import com.mojang.brigadier.arguments.FloatArgumentType;
-import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 
+import git.frozenstream.readstar.blocks.entity.ArmillarySphereBlockEntity;
+import git.frozenstream.readstar.blocks.renderer.ArmillarySphereRenderer;
 import git.frozenstream.readstar.elements.CelestialBodyManager;
 import git.frozenstream.readstar.elements.CelestialBody;
 import git.frozenstream.readstar.elements.MeteorCollector;
@@ -35,6 +36,7 @@ import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent;
 import net.neoforged.neoforge.client.event.AddClientReloadListenersEvent;
+import net.neoforged.neoforge.client.event.EntityRenderersEvent;
 import net.neoforged.neoforge.client.event.ExtractLevelRenderStateEvent;
 import net.neoforged.neoforge.client.event.RegisterRenderPipelinesEvent;
 import net.neoforged.neoforge.client.event.RegisterSpriteSourcesEvent;
@@ -186,6 +188,20 @@ public class ReadStarClient {
         event.addListener(skyId, skyboxRenderer);
     }
 
+    // ==================== 浑天仪 BER 注册 ====================
+
+    @SubscribeEvent
+    static void onRegisterRenderers(EntityRenderersEvent.RegisterRenderers event) {
+        // 确保 TYPE 已绑定（在 EntityRenderersEvent 时 DeferredRegister 已完成）
+        ArmillarySphereBlockEntity.TYPE = ReadStar.ARMILLARY_SPHERE_BE.get();
+        // 注册浑天仪方块实体渲染器
+        event.registerBlockEntityRenderer(
+                ArmillarySphereBlockEntity.TYPE,
+                ArmillarySphereRenderer::new
+        );
+        ReadStar.LOGGER.info("ReadStarClient: Registered ArmillarySphereRenderer");
+    }
+
     @SubscribeEvent
     static void onExtractLevelRenderState(ExtractLevelRenderStateEvent event) {
         var level = event.getLevel();
@@ -246,7 +262,6 @@ public class ReadStarClient {
             }
 
             if (maxCoverage > 0.1f) {
-                ReadStar.LOGGER.debug("Coverage: {}", maxCoverage);
                 float darkFactor = 1f - maxCoverage * 0.8f;
                 int r = (int) (ARGB.red(skyColor) * darkFactor);
                 int g = (int) (ARGB.green(skyColor) * darkFactor);
