@@ -6,6 +6,9 @@
   "item.readstar.astronomical_manuscript": "Astronomical Manuscript",
   "screen.readstar.astronomical_manuscript": "Astronomical Manuscript",
 
+  "block.readstar.armillary_sphere": "Armillary Sphere",
+  "item.readstar.armillary_sphere": "Armillary Sphere",
+
   "planet.readstar.sun": "Sun",
   "planet.readstar.earth": "Earth",
   "planet.readstar.mars": "Mars",
