@@ -27,6 +27,11 @@ sourceSets.main.resources {
     exclude("src/generated/**/.cache") // datagen cache files
 }
 
+// Handle duplicate resources (e.g., when datagen output overlaps with manual resources)
+tasks.named('processResources', ProcessResources).configure {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
 repositories {
     // Add here additional repositories if required by some of the dependencies below.
 }

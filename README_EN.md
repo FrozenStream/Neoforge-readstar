@@ -65,9 +65,9 @@ Based on Vmag with independent decay thresholds:
 
 | Parameter | Formula | Notes |
 |-----------|---------|-------|
-| Alpha | `clamp(1 - max(0, Vmag-3)/12, 0.4, 1)` | Full brightness at Vmag ≤ 3 |
-| RGB | `clamp(1 - max(0, Vmag-1)/19, 0.7, 1)` | Full brightness at Vmag ≤ 1 |
-| Size | `clamp(1 - Vmag/12, 0.5, 1) × starCoreSize` | Larger Vmag = smaller dot |
+| Alpha | `10^(-0.05 × max(0, Vmag-1))` | Pogson's law, full at vmag≤1 |
+| RGB | Same as Alpha | Color & alpha decay together |
+| Size | `max(10^(-0.05 × max(0, Vmag-2)), 0.3) × starCoreSize` | Minimum visible size for dim stars |
 
 Glow quads only for Vmag < 2.0: `< 0.5 → high / < 1.5 → medium / < 2.0 → low`.
 
@@ -352,6 +352,26 @@ Requirements: RGBA 32-bit, 32×32, black edges, glow brightness suppressed ×0.3
 ## Network Sync
 
 Server loads `data/readstar/celestial/*.json` and broadcasts via `readstar:planet_system` packet. Client rebuilds the celestial tree in `CelestialBodyManager.initializeFromJson()`.
+
+---
+
+## Commands
+
+| Command | Args | Description |
+|---------|------|-------------|
+| `/readstar skybox vmag <0~10>` | `vmag` — magnitude threshold | Rebuild star buffer filtered by Vmag. Only stars with `Vmag ≤ threshold` are rendered. Default `6.0` (naked-eye limit). Client-side, instant effect. |
+| `/readstar message all <msg>` | `msg` — text | Broadcast a message to all players (server-side, requires OP) |
+| `/readstar message player <player> <msg>` | `player` — target, `msg` — text | Send a message to a specific player (server-side, requires OP) |
+
+### Vmag Reference
+
+| Vmag | Visible Stars (~) | Description |
+|------|:--:|-------------|
+| 1 | 20 | Brightest stars |
+| 3 | 300 | Urban night sky |
+| 6 | 5,000 | Naked-eye limit (default) |
+| 8 | 40,000 | Binoculars |
+| 10 | 300,000+ | Full catalog |
 
 ---
 
