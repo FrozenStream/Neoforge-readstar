@@ -73,7 +73,9 @@ public class ReadstarSkyRenderer implements AutoCloseable {
     private final TextureAtlas celestialsAtlas;
     private final TextureAtlas starsAtlas;
     private final List<Star> stars;
-    private final GpuBuffer starBuffer;
+    /** 当前星星缓冲区使用的最大 Vmag 阈值（仅 vmag <= maxVmag 的星被包含） */
+    private float maxVmag = 6.0f;
+    private GpuBuffer starBuffer;
     private final GpuBuffer topSkyBuffer;
     private final GpuBuffer bottomSkyBuffer;
     private final GpuBuffer endSkyBuffer;
@@ -103,7 +105,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         this.celestialsAtlas = atlasManager.getAtlasOrThrow(ReadStarClient.CELESTIAL_ATLAS_INFO);
         this.starsAtlas = atlasManager.getAtlasOrThrow(ReadStarClient.STAR_ATLAS_INFO);
         this.stars = parseStars(resourceManager);
-        this.starBuffer = buildStarsBuffer(this.stars);
+        this.starBuffer = buildStarsBuffer(filterByVmag(this.stars));
         this.endSkyBuffer = buildEndSky();
         this.endSkyTexture = this.getTexture(textureManager, END_SKY_LOCATION);
         this.endFlashBuffer = buildEndFlashQuad(this.celestialsAtlas);
@@ -326,10 +328,45 @@ public class ReadstarSkyRenderer implements AutoCloseable {
     }
 
     /**
-     * 从已解析的 Star 列表构建 Position(center) + UV + Color + Offset 格式的 GPU 顶点缓冲。
-     * 每颗星 4 顶点 QUAD，所有顶点共享同一 Position（球心），用 Offset 区分 billboard 角落方向。
-     * Offset = (方向 × 星点大小)，着色器通过 FovCompensation 反补以保持屏幕大小不变。
+     * 按当前 maxVmag 阈值重建星星 GPU 缓冲。
+     * 关闭旧缓冲，过滤星表，重新构建并替换 starBuffer。
+     * @param newMaxVmag 新的 Vmag 上限（0~10），只包含 vmag <= newMaxVmag 的星星
      */
+    public void rebuildStarBuffer(float newMaxVmag) {
+        float clamped = Math.max(0.0f, Math.min(10.0f, newMaxVmag));
+        if (clamped == this.maxVmag) return;
+        this.maxVmag = clamped;
+
+        // 关闭旧缓冲
+        if (this.starBuffer != null) {
+            this.starBuffer.close();
+        }
+
+        // 按 vmag 过滤星表
+        List<Star> filtered = filterByVmag(this.stars);
+
+        // 重建
+        this.starBuffer = buildStarsBuffer(filtered);
+        ReadStar.LOGGER.info("Rebuilt star buffer with maxVmag={}: {} / {} stars",
+                this.maxVmag, filtered.size(), this.stars.size());
+    }
+
+    /** 按当前 maxVmag 阈值过滤星表 */
+    private List<Star> filterByVmag(List<Star> source) {
+        List<Star> filtered = new ArrayList<>();
+        for (Star s : source) {
+            if (s.vmag <= this.maxVmag) {
+                filtered.add(s);
+            }
+        }
+        return filtered;
+    }
+
+    /** 获取当前 maxVmag 阈值 */
+    public float getMaxVmag() {
+        return maxVmag;
+    }
+
     private GpuBuffer buildStarsBuffer(List<Star> stars) {
         int starCount = stars.size();
         VertexFormat format = ReadStarClient.POSITION_TEX_COLOR_OFFSET;
@@ -375,12 +412,16 @@ public class ReadstarSkyRenderer implements AutoCloseable {
                     // 球面位置（着色器内部计算 billboard 朝向）
                     Vector3f center = new Vector3f(star.direction).normalize(100.0F);
 
-                    // 逐星亮度：alpha 从 vmag>3 衰减，RGB 从 vmag>1 衰减
-                    float alphaF = Math.max(1.0f - Math.max(0.0f, vmag - 0.0f) / 10.0f, 0.5f);
-                    float colorF = Math.max(1.0f - Math.max(0.0f, vmag - 1.0f) / 7.0f, 0.2f);
-                    int starAlpha = (int) (alphaF * 255.0f);
-                    int starColor = (int) (colorF * 255.0f);
-                    float starSize = Math.max(1.0f - Math.max(0.0f, vmag - 1.0f) / 10.0f, 0.5f) * coreSize;
+                    // 逐星亮度：普森(Pogson)星等-亮度公式 —— 人眼感知模型
+                    // Δ5mag = 100× 亮度比 → brightness ∝ 10^(-0.4 × vmag)
+                    // 以 vmag=1 为基准归一化，vmag<1 的亮星钳位不增亮
+                    float alphaF = (float) Math.pow(10.0, -0.08 * Math.max(vmag - 1.0, 0.0));
+                    float colorF = (float) Math.pow(10.0, -0.08 * Math.max(vmag - 1.0, 0.0));
+                    int starAlpha = Math.min(255, Math.max(1, (int) (alphaF * 255.0f)));
+                    int starColor = Math.min(255, Math.max(1, (int) (colorF * 255.0f)));
+                    // 星点视大小衰减指数取 -0.3（比亮度平缓），保证暗星仍有最小可见尺寸
+                    float sizeF = (float) Math.pow(10.0, -0.05 * Math.max(vmag - 2.0, 0.0));
+                    float starSize = Math.max(sizeF, 0.3f) * coreSize;
 
                     // ---- 核心 quad（所有星）：4 顶点共享 center，Offset 区分角落 ----
                     Identifier coreId = Identifier.fromNamespaceAndPath(ReadStar.MODID, "environment/stars/color_" + color);
@@ -606,51 +647,6 @@ public class ReadstarSkyRenderer implements AutoCloseable {
             renderPass.setVertexBuffer(0, this.topSkyBuffer);
             renderPass.draw(0, 10);
         }
-    }
-
-    /**
-     * 根据观测者天体的大气 HSV 属性，将大气颜色混合到原版天空颜色中。
-     *
-     * @param skyColor 原版计算的天空颜色（ARGB）
-     * @param observer 观测者所在天体
-     * @return 混合后的天空颜色
-     */
-    private static int blendAtmosphereColor(int skyColor, CelestialBody observer) {
-        if (observer == null || !observer.hasAtmosphere) {
-            return skyColor;
-        }
-
-        int hsv = observer.atmosphereHSV;
-        float v = CelestialBody.getValueFloat(hsv);
-        if (v <= 0f) return skyColor;
-
-        // 提取大气 HSV → RGB
-        float[] atmRgb = hsvToRgb(
-                CelestialBody.getHueFloat(hsv),
-                CelestialBody.getSaturationFloat(hsv),
-                1.0f);
-
-        // 提取原版天空颜色 RGB
-        float origR = ARGB.red(skyColor) / 255f;
-        float origG = ARGB.green(skyColor) / 255f;
-        float origB = ARGB.blue(skyColor) / 255f;
-
-        // 天空亮度（夜间 → 0，白昼 → 1），防止夜晚大气着色
-        float skyBrightness = Math.max(origR, Math.max(origG, origB));
-
-        // 混合权重：浓度 × 强度系数 × 天空亮度（夜晚自动归零）
-        float blend = Mth.clamp(v * 0.6f * skyBrightness, 0f, 1f);
-        float sat = CelestialBody.getSaturationFloat(hsv);
-
-        // lerp 原版颜色 → 大气颜色
-        float r = origR + (atmRgb[0] - origR) * blend * sat;
-        float g = origG + (atmRgb[1] - origG) * blend * sat;
-        float b = origB + (atmRgb[2] - origB) * blend * sat;
-
-        return ARGB.color(255,
-                (int) Mth.clamp(r * 255f, 0, 255),
-                (int) Mth.clamp(g * 255f, 0, 255),
-                (int) Mth.clamp(b * 255f, 0, 255));
     }
 
     /**
@@ -1343,6 +1339,8 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         Star nearestStar = null;
         float bestDot = -2.0f;
         for (Star s : this.stars) {
+            if (s.vmag > this.maxVmag)
+                continue;
             float dot = celestialDir.dot(s.direction);
             if (dot > bestDot) {
                 bestDot = dot;
@@ -1359,7 +1357,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         g.text(font, String.format("Alt: %+.1f°", altitude), 10, 10, dimColor);
 
         // 对准某颗星时（夹角 < 2°），在星星的屏幕位置绘制跟随 tooltip
-        float threshold = (float) Math.cos(Math.toRadians(2.0));
+        float threshold = (float) Math.cos(Math.toRadians(1.0));
         if (nearestStar == null || bestDot <= threshold) return;
 
         // 星星方向变换到世界空间

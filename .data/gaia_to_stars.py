@@ -11,22 +11,19 @@ Gaia DR3 VOTable (含 teff) → stars.json 转换
 用法: .venv/Scripts/python gaia_to_stars.py
 """
 
-import csv
 import json
 import math
 import os
-import re
 
 import numpy as np
 from astropy.table import Table
 
 # ==================== 配置 ====================
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-VOT_PATH = os.path.join(SCRIPT_DIR, 'gaia_bright_with_teff.vot')
+VOT_PATH = os.path.join(SCRIPT_DIR, 'gaia_bright_with_teff_10.vot')
 IAU_PATH = os.path.join(SCRIPT_DIR, 'IAU-Catalog of Star Names (always up to date).csv')
-OUTPUT_NAMED = os.path.join(SCRIPT_DIR, 'stars_gaia_named.json')
-OUTPUT_NUMBERED = os.path.join(SCRIPT_DIR, 'stars_gaia_numbered.json')
-MAG_LIMIT = 6.5
+OUTPUT_NAMED = os.path.join(SCRIPT_DIR, 'stars_gaia_named_10.json')
+OUTPUT_NUMBERED = os.path.join(SCRIPT_DIR, 'stars_gaia_numbered_10.json')
 COLOR_BOOST = 1.6   # 饱和度增强 (1.0=物理原色, >1=更鲜艳)
 
 
@@ -143,8 +140,6 @@ def parse_gaia() -> list[dict]:
     teff_ok = 0
     for row in t:
         gmag = float(row['phot_g_mean_mag'])
-        if gmag > MAG_LIMIT:
-            continue
         ra = float(row['ra']); dec = float(row['dec'])
         x, y, z = radec_to_xyz(ra, dec)
         teff = float(row['teff_gspphot']) if not np.ma.is_masked(row['teff_gspphot']) else None
