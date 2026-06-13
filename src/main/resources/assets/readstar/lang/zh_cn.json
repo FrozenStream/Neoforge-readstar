@@ -6,6 +6,9 @@
   "item.readstar.astronomical_manuscript": "天文手稿",
   "screen.readstar.astronomical_manuscript": "天文手稿",
 
+  "block.readstar.armillary_sphere": "浑天仪",
+  "item.readstar.armillary_sphere": "浑天仪",
+
   "planet.readstar.sun": "太阳",
   "planet.readstar.earth": "地球",
   "planet.readstar.mars": "火星",

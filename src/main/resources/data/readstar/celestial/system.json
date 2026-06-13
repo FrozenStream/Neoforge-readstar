@@ -106,11 +106,11 @@
             1.0
           ],
           "orbit": {
-            "semiMajorAxis": 2.667e10,
+            "semiMajorAxis": 2.667e11,
             "eccentricity": 0.967,
-            "inclination": 0.3,
-            "argumentOfPeriapsis": 1.57,
-            "longitudeOfAscendingNode": 0.0,
+            "inclination": 2.828,
+            "argumentOfPeriapsis": 1.94,
+            "longitudeOfAscendingNode": 1.02,
             "initialMeanAnomaly": 0.0
           },
           "children": {}
