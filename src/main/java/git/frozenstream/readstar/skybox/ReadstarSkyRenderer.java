@@ -18,6 +18,7 @@ import com.mojang.math.Axis;
 import git.frozenstream.readstar.Config;
 import git.frozenstream.readstar.ReadStar;
 import git.frozenstream.readstar.ReadStarClient;
+import git.frozenstream.readstar.ReadstarRenderPipelines;
 import git.frozenstream.readstar.elements.CelestialBody;
 import git.frozenstream.readstar.elements.CelestialBodyManager;
 import git.frozenstream.readstar.elements.Meteor;
@@ -369,14 +370,15 @@ public class ReadstarSkyRenderer implements AutoCloseable {
 
     private GpuBuffer buildStarsBuffer(List<Star> stars) {
         int starCount = stars.size();
-        VertexFormat format = ReadStarClient.POSITION_TEX_COLOR_OFFSET;
+        VertexFormat format = ReadstarRenderPipelines.POSITION_TEX_COLOR_OFFSET;
         int vtxSize = format.getVertexSize();
 
         // 预计算元素偏移量
-        int posOffset = format.getOffset(VertexFormatElement.POSITION);
-        int uvOffset = format.getOffset(VertexFormatElement.UV0);
-        int colorOffset = format.getOffset(VertexFormatElement.COLOR);
-        int offsetOffset = format.getOffset(ReadStarClient.OFFSET_ELEMENT);
+        // Format: Position(RGB32=12) + UV0(RG32=8) + Color(RGBA8=4) + Offset(RGB32=12) = 36 bytes
+        int posOffset = 0;
+        int uvOffset = 12;
+        int colorOffset = 20;
+        int offsetOffset = 24;
 
         // 预计光晕星数量（Vmag < 2.0 才有光晕）
         int glowStarCount = 0;
@@ -641,7 +643,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
                 .createCommandEncoder()
                 .createRenderPass(() -> "Atmosphere overlay", colorTexture, OptionalInt.empty(), depthTexture,
                         OptionalDouble.empty())) {
-            renderPass.setPipeline(ReadStarClient.ATMOSPHERE_OVERLAY_PIPELINE);
+            renderPass.setPipeline(ReadstarRenderPipelines.ATMOSPHERE_OVERLAY);
             RenderSystem.bindDefaultUniforms(renderPass);
             renderPass.setUniform("DynamicTransforms", dynamicTransforms);
             renderPass.setVertexBuffer(0, this.topSkyBuffer);
@@ -951,7 +953,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         try (RenderPass renderPass = RenderSystem.getDevice()
                 .createCommandEncoder()
                 .createRenderPass(() -> "Glow", color, OptionalInt.empty(), depth, OptionalDouble.empty())) {
-            renderPass.setPipeline(ReadStarClient.HALO_PIPELINE);
+            renderPass.setPipeline(ReadstarRenderPipelines.HALO);
             RenderSystem.bindDefaultUniforms(renderPass);
             renderPass.setUniform("DynamicTransforms", dynamicTransforms);
             renderPass.bindTexture("Sampler0", this.celestialsAtlas.getTextureView(), this.celestialsAtlas.getSampler());
@@ -1168,7 +1170,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         try (RenderPass renderPass = RenderSystem.getDevice()
                 .createCommandEncoder()
                 .createRenderPass(() -> label, color, OptionalInt.empty(), depth, OptionalDouble.empty())) {
-            renderPass.setPipeline(ReadStarClient.COMET_TAIL_PIPELINE);
+            renderPass.setPipeline(ReadstarRenderPipelines.COMET_TAIL);
             RenderSystem.bindDefaultUniforms(renderPass);
             renderPass.setUniform("DynamicTransforms", dynamicTransforms);
             renderPass.setVertexBuffer(0, buffer);
@@ -1217,7 +1219,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
                 .createCommandEncoder()
                 .createRenderPass(() -> "Stars", colorTexture, OptionalInt.empty(), depthTexture,
                         OptionalDouble.empty())) {
-            renderPass.setPipeline(ReadStarClient.STAR_TEXTURED_PIPELINE);
+            renderPass.setPipeline(ReadstarRenderPipelines.STAR_TEXTURED);
             RenderSystem.bindDefaultUniforms(renderPass);
             renderPass.setUniform("DynamicTransforms", dynamicTransforms);
             renderPass.bindTexture("Sampler0", this.starsAtlas.getTextureView(), this.starsAtlas.getSampler());
