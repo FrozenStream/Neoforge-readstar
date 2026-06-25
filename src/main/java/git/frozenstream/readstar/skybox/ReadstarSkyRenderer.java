@@ -1,15 +1,15 @@
 package git.frozenstream.readstar.skybox;
 
-import com.google.gson.JsonArray;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.phys.Vec3;
+
+import com.mojang.blaze3d.PrimitiveTopology;
 import com.mojang.blaze3d.buffers.GpuBuffer;
 import com.mojang.blaze3d.buffers.GpuBufferSlice;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
+import com.mojang.blaze3d.pipeline.RenderTarget;
 import com.mojang.blaze3d.systems.RenderPass;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.textures.GpuTextureView;
@@ -18,6 +18,7 @@ import com.mojang.math.Axis;
 import git.frozenstream.readstar.Config;
 import git.frozenstream.readstar.ReadStar;
 import git.frozenstream.readstar.ReadStarClient;
+import git.frozenstream.readstar.ReadstarRenderPipelines;
 import git.frozenstream.readstar.elements.CelestialBody;
 import git.frozenstream.readstar.elements.CelestialBodyManager;
 import git.frozenstream.readstar.elements.Meteor;
@@ -34,8 +35,6 @@ import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.client.renderer.texture.TextureManager;
 import net.minecraft.client.resources.model.sprite.AtlasManager;
 import net.minecraft.resources.Identifier;
-import net.minecraft.server.packs.resources.Resource;
-import net.minecraft.server.packs.resources.ResourceManager;
 import net.minecraft.util.ARGB;
 import net.minecraft.util.Mth;
 import net.minecraft.world.attribute.EnvironmentAttributeProbe;
@@ -44,15 +43,13 @@ import net.minecraft.world.level.MoonPhase;
 import net.minecraft.world.level.dimension.DimensionType;
 import org.joml.*;
 
-import java.io.InputStreamReader;
 import java.lang.Math;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.OptionalDouble;
-import java.util.OptionalInt;
 
 
 public class ReadstarSkyRenderer implements AutoCloseable {
@@ -72,9 +69,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
     // private static final float END_FLASH_SCALE = 60.0F;
     private final TextureAtlas celestialsAtlas;
     private final TextureAtlas starsAtlas;
-    private final List<Star> stars;
-    /** 当前星星缓冲区使用的最大 Vmag 阈值（仅 vmag <= maxVmag 的星被包含） */
-    private float maxVmag = 6.0f;
+    private final RenderTarget renderTarget;
     private GpuBuffer starBuffer;
     private final GpuBuffer topSkyBuffer;
     private final GpuBuffer bottomSkyBuffer;
@@ -85,8 +80,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
     private final GpuBuffer sunriseBuffer;
     private final GpuBuffer endFlashBuffer;
     private final GpuBuffer haloBuffer;
-    private final RenderSystem.AutoStorageIndexBuffer quadIndices = RenderSystem
-            .getSequentialBuffer(VertexFormat.Mode.QUADS);
+    private final RenderSystem.AutoStorageIndexBuffer quadIndices = RenderSystem.getSequentialBuffer(PrimitiveTopology.QUADS);
     private final AbstractTexture endSkyTexture;
     private int starIndexCount;
     /** 最近一帧计算的有效星光亮度，供 renderHud 读取 */
@@ -101,11 +95,10 @@ public class ReadstarSkyRenderer implements AutoCloseable {
      */
     public record Star(String name, Vector3f direction, float vmag, int color) {}
 
-    public ReadstarSkyRenderer(TextureManager textureManager, AtlasManager atlasManager, ResourceManager resourceManager) {
+    public ReadstarSkyRenderer(TextureManager textureManager, AtlasManager atlasManager, RenderTarget renderTarget) {
         this.celestialsAtlas = atlasManager.getAtlasOrThrow(ReadStarClient.CELESTIAL_ATLAS_INFO);
         this.starsAtlas = atlasManager.getAtlasOrThrow(ReadStarClient.STAR_ATLAS_INFO);
-        this.stars = parseStars(resourceManager);
-        this.starBuffer = buildStarsBuffer(filterByVmag(this.stars));
+        this.renderTarget = renderTarget;
         this.endSkyBuffer = buildEndSky();
         this.endSkyTexture = this.getTexture(textureManager, END_SKY_LOCATION);
         this.endFlashBuffer = buildEndFlashQuad(this.celestialsAtlas);
@@ -113,14 +106,14 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         this.haloBuffer = buildHaloQuad(this.celestialsAtlas);
 
         try (ByteBufferBuilder builder = ByteBufferBuilder.exactlySized(10 * DefaultVertexFormat.POSITION.getVertexSize())) {
-            BufferBuilder bufferBuilder = new BufferBuilder(builder, VertexFormat.Mode.TRIANGLE_FAN, DefaultVertexFormat.POSITION);
+            BufferBuilder bufferBuilder = new BufferBuilder(builder, PrimitiveTopology.TRIANGLE_FAN, DefaultVertexFormat.POSITION);
             this.buildSkyDisc(bufferBuilder, 16.0F);
 
             try (MeshData meshData = bufferBuilder.buildOrThrow()) {
                 this.topSkyBuffer = RenderSystem.getDevice().createBuffer(() -> "Top sky vertex buffer", 32, meshData.vertexBuffer());
             }
 
-            bufferBuilder = new BufferBuilder(builder, VertexFormat.Mode.TRIANGLE_FAN, DefaultVertexFormat.POSITION);
+            bufferBuilder = new BufferBuilder(builder, PrimitiveTopology.TRIANGLE_FAN, DefaultVertexFormat.POSITION);
             this.buildSkyDisc(bufferBuilder, -16.0F);
 
             try (MeshData meshData = bufferBuilder.buildOrThrow()) {
@@ -168,7 +161,6 @@ public class ReadstarSkyRenderer implements AutoCloseable {
      */
     private GpuBuffer buildBodyBuffer(String name, String category) {
         MoonPhase[] phases = MoonPhase.values();
-        VertexFormat format = DefaultVertexFormat.POSITION_TEX;
 
         List<TextureAtlasSprite> sprites = new ArrayList<>();
         for (MoonPhase phase : phases) {
@@ -192,7 +184,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         VertexFormat format = DefaultVertexFormat.POSITION_TEX;
         int totalBytes = sprites.size() * 4 * format.getVertexSize();
         try (ByteBufferBuilder bb = ByteBufferBuilder.exactlySized(totalBytes)) {
-            BufferBuilder buf = new BufferBuilder(bb, VertexFormat.Mode.QUADS, format);
+            BufferBuilder buf = new BufferBuilder(bb, PrimitiveTopology.QUADS, format);
             for (TextureAtlasSprite sprite : sprites) {
                 buf.addVertex(-1.0F, 0.0F, -1.0F).setUv(sprite.getU1(), sprite.getV1());
                 buf.addVertex(1.0F, 0.0F, -1.0F).setUv(sprite.getU0(), sprite.getV1());
@@ -212,12 +204,11 @@ public class ReadstarSkyRenderer implements AutoCloseable {
     }
 
     private GpuBuffer buildSunriseFan() {
-        int vertices = 18;
         int vtxSize = DefaultVertexFormat.POSITION_COLOR.getVertexSize();
 
         GpuBuffer var16;
         try (ByteBufferBuilder byteBufferBuilder = ByteBufferBuilder.exactlySized(18 * vtxSize)) {
-            BufferBuilder bufferBuilder = new BufferBuilder(byteBufferBuilder, VertexFormat.Mode.TRIANGLE_FAN, DefaultVertexFormat.POSITION_COLOR);
+            BufferBuilder bufferBuilder = new BufferBuilder(byteBufferBuilder, PrimitiveTopology.TRIANGLE_FAN, DefaultVertexFormat.POSITION_COLOR);
             int centerColor = ARGB.white(1.0F);
             int ringColor = ARGB.white(0.0F);
             bufferBuilder.addVertex(0.0F, 100.0F, 0.0F).setColor(centerColor);
@@ -252,7 +243,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         int white = ARGB.color(255, 255, 255, 255);
 
         try (ByteBufferBuilder bb = ByteBufferBuilder.exactlySized(4 * format.getVertexSize())) {
-            BufferBuilder buf = new BufferBuilder(bb, VertexFormat.Mode.QUADS, format);
+            BufferBuilder buf = new BufferBuilder(bb, PrimitiveTopology.QUADS, format);
             buf.addVertex(-1.0F, 0.0F, -1.0F).setUv(sprite.getU0(), sprite.getV0()).setColor(white);
             buf.addVertex( 1.0F, 0.0F, -1.0F).setUv(sprite.getU1(), sprite.getV0()).setColor(white);
             buf.addVertex( 1.0F, 0.0F,  1.0F).setUv(sprite.getU1(), sprite.getV1()).setColor(white);
@@ -268,7 +259,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
 
         GpuBuffer var6;
         try (ByteBufferBuilder byteBufferBuilder = ByteBufferBuilder.exactlySized(4 * format.getVertexSize())) {
-            BufferBuilder bufferBuilder = new BufferBuilder(byteBufferBuilder, VertexFormat.Mode.QUADS, format);
+            BufferBuilder bufferBuilder = new BufferBuilder(byteBufferBuilder, PrimitiveTopology.QUADS, format);
             bufferBuilder.addVertex(-1.0F, 0.0F, -1.0F).setUv(sprite.getU0(), sprite.getV0());
             bufferBuilder.addVertex(1.0F, 0.0F, -1.0F).setUv(sprite.getU1(), sprite.getV0());
             bufferBuilder.addVertex(1.0F, 0.0F, 1.0F).setUv(sprite.getU1(), sprite.getV1());
@@ -282,101 +273,18 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         return var6;
     }
 
-    /**
-     * 扫描 stars/ 目录下所有 .json 文件，合并解析星表数据，返回不可变列表。
-     */
-    private static List<Star> parseStars(ResourceManager resourceManager) {
-        List<Star> result = new ArrayList<>();
 
-        Map<Identifier, Resource> starResources = resourceManager.listResources(
-                "stars", id -> id.getPath().endsWith(".json"));
-
-        if (starResources.isEmpty()) {
-            ReadStar.LOGGER.warn("No star data files found in stars/");
-            return List.of();
-        }
-
-        for (Map.Entry<Identifier, Resource> entry : starResources.entrySet()) {
-            Identifier resPath = entry.getKey();
-            try (InputStreamReader reader = new InputStreamReader(entry.getValue().open(),
-                    StandardCharsets.UTF_8)) {
-                JsonArray starsArray = JsonParser.parseReader(reader).getAsJsonObject().getAsJsonArray("Stars");
-                if (starsArray == null) {
-                    ReadStar.LOGGER.warn("No 'Stars' array in: {}", resPath);
-                    continue;
-                }
-                int before = result.size();
-                for (int i = 0; i < starsArray.size(); i++) {
-                    JsonObject obj = starsArray.get(i).getAsJsonObject();
-                    JsonArray pos = obj.getAsJsonArray("position");
-                    float px = pos.get(0).getAsFloat();
-                    float py = pos.get(1).getAsFloat();
-                    float pz = pos.get(2).getAsFloat();
-                    String name = obj.get("name").getAsString();
-                    float vmag = obj.get("Vmag").getAsFloat();
-                    int color = obj.get("color").getAsInt();
-                    result.add(new Star(name, new Vector3f(px, py, pz).normalize(), vmag, color));
-                }
-                ReadStar.LOGGER.info("Parsed {} stars from {}", result.size() - before, resPath);
-            } catch (Exception e) {
-                ReadStar.LOGGER.error("Failed to load star data from {}: {}", resPath, e.getMessage());
-            }
-        }
-
-        ReadStar.LOGGER.info("Total parsed {} stars from {} file(s)", result.size(), starResources.size());
-        return List.copyOf(result);
-    }
-
-    /**
-     * 按当前 maxVmag 阈值重建星星 GPU 缓冲。
-     * 关闭旧缓冲，过滤星表，重新构建并替换 starBuffer。
-     * @param newMaxVmag 新的 Vmag 上限（0~10），只包含 vmag <= newMaxVmag 的星星
-     */
-    public void rebuildStarBuffer(float newMaxVmag) {
-        float clamped = Math.max(0.0f, Math.min(10.0f, newMaxVmag));
-        if (clamped == this.maxVmag) return;
-        this.maxVmag = clamped;
-
-        // 关闭旧缓冲
-        if (this.starBuffer != null) {
-            this.starBuffer.close();
-        }
-
-        // 按 vmag 过滤星表
-        List<Star> filtered = filterByVmag(this.stars);
-
-        // 重建
-        this.starBuffer = buildStarsBuffer(filtered);
-        ReadStar.LOGGER.info("Rebuilt star buffer with maxVmag={}: {} / {} stars",
-                this.maxVmag, filtered.size(), this.stars.size());
-    }
-
-    /** 按当前 maxVmag 阈值过滤星表 */
-    private List<Star> filterByVmag(List<Star> source) {
-        List<Star> filtered = new ArrayList<>();
-        for (Star s : source) {
-            if (s.vmag <= this.maxVmag) {
-                filtered.add(s);
-            }
-        }
-        return filtered;
-    }
-
-    /** 获取当前 maxVmag 阈值 */
-    public float getMaxVmag() {
-        return maxVmag;
-    }
-
-    private GpuBuffer buildStarsBuffer(List<Star> stars) {
+    public void buildStarsBuffer(List<Star> stars) {
         int starCount = stars.size();
-        VertexFormat format = ReadStarClient.POSITION_TEX_COLOR_OFFSET;
+        VertexFormat format = ReadstarRenderPipelines.POSITION_TEX_COLOR_OFFSET;
         int vtxSize = format.getVertexSize();
 
         // 预计算元素偏移量
-        int posOffset = format.getOffset(VertexFormatElement.POSITION);
-        int uvOffset = format.getOffset(VertexFormatElement.UV0);
-        int colorOffset = format.getOffset(VertexFormatElement.COLOR);
-        int offsetOffset = format.getOffset(ReadStarClient.OFFSET_ELEMENT);
+        // Format: Position(RGB32=12) + UV0(RG32=8) + Color(RGBA8=4) + Offset(RGB32=12) = 36 bytes
+        int posOffset = 0;
+        int uvOffset = 12;
+        int colorOffset = 20;
+        int offsetOffset = 24;
 
         // 预计光晕星数量（Vmag < 2.0 才有光晕）
         int glowStarCount = 0;
@@ -391,10 +299,9 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         if (totalVertices == 0) {
             this.starIndexCount = 0;
             try (ByteBufferBuilder buf = ByteBufferBuilder.exactlySized(1)) {
-                BufferBuilder builder = new BufferBuilder(buf, VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX_COLOR);
+                BufferBuilder builder = new BufferBuilder(buf, PrimitiveTopology.QUADS, DefaultVertexFormat.POSITION_TEX_COLOR);
                 try (MeshData mesh = builder.buildOrThrow()) {
-                    return RenderSystem.getDevice().createBuffer(() -> "Stars vertex buffer (empty)", 32,
-                            mesh.vertexBuffer());
+                    this.starBuffer = RenderSystem.getDevice().createBuffer(() -> "Stars vertex buffer (empty)", 32, mesh.vertexBuffer());
                 }
             }
         }
@@ -464,9 +371,9 @@ public class ReadstarSkyRenderer implements AutoCloseable {
                 this.starIndexCount = 0;
                 ReadStar.LOGGER.warn("Star buffer build returned null");
                 try (ByteBufferBuilder emptyBuf = ByteBufferBuilder.exactlySized(1)) {
-                    BufferBuilder b = new BufferBuilder(emptyBuf, VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX_COLOR);
+                    BufferBuilder b = new BufferBuilder(emptyBuf, PrimitiveTopology.QUADS, DefaultVertexFormat.POSITION_TEX_COLOR);
                     try (MeshData mesh = b.buildOrThrow()) {
-                        return RenderSystem.getDevice().createBuffer(() -> "Stars vertex buffer (fallback)", 32, mesh.vertexBuffer());
+                        this.starBuffer = RenderSystem.getDevice().createBuffer(() -> "Stars vertex buffer (fallback)", 32, mesh.vertexBuffer());
                     }
                 }
             }
@@ -475,7 +382,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
             this.starIndexCount = totalVertices / 4 * 6;
             ReadStar.LOGGER.info("Built star vertex buffer with {} indices ({} stars, {} with glow)",
                     this.starIndexCount, starCount, glowStarCount);
-            return RenderSystem.getDevice().createBuffer(() -> "Stars vertex buffer", 32, result.byteBuffer());
+            this.starBuffer = RenderSystem.getDevice().createBuffer(() -> "Stars vertex buffer", 32, result.byteBuffer());
         }
     }
 
@@ -493,7 +400,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         GpuBuffer var10;
         try (ByteBufferBuilder byteBufferBuilder = ByteBufferBuilder
                 .exactlySized(24 * DefaultVertexFormat.POSITION_TEX_COLOR.getVertexSize())) {
-            BufferBuilder bufferBuilder = new BufferBuilder(byteBufferBuilder, VertexFormat.Mode.QUADS,
+            BufferBuilder bufferBuilder = new BufferBuilder(byteBufferBuilder, PrimitiveTopology.QUADS,
                     DefaultVertexFormat.POSITION_TEX_COLOR);
 
             for (int i = 0; i < 6; i++) {
@@ -532,20 +439,19 @@ public class ReadstarSkyRenderer implements AutoCloseable {
 
     public void renderSkyDisc(int skyColor) {
         GpuBufferSlice dynamicTransforms = RenderSystem.getDynamicUniforms()
-                .writeTransform(RenderSystem.getModelViewMatrix(), ARGB.vector4fFromARGB32(skyColor), new Vector3f(),
+                .writeTransform(RenderSystem.getModelViewMatrixCopy(), ARGB.vector4fFromARGB32(skyColor), new Vector3f(),
                         new Matrix4f());
-        GpuTextureView colorTexture = Minecraft.getInstance().getMainRenderTarget().getColorTextureView();
-        GpuTextureView depthTexture = Minecraft.getInstance().getMainRenderTarget().getDepthTextureView();
+        GpuTextureView colorTexture = this.renderTarget.getColorTextureView();
+        GpuTextureView depthTexture = this.renderTarget.getDepthTextureView();
 
         try (RenderPass renderPass = RenderSystem.getDevice()
                 .createCommandEncoder()
-                .createRenderPass(() -> "Sky disc", colorTexture, OptionalInt.empty(), depthTexture,
-                        OptionalDouble.empty())) {
+                .createRenderPass(() -> "Sky disc", colorTexture, Optional.empty(), depthTexture, OptionalDouble.empty())) {
             renderPass.setPipeline(RenderPipelines.SKY);
             RenderSystem.bindDefaultUniforms(renderPass);
             renderPass.setUniform("DynamicTransforms", dynamicTransforms);
-            renderPass.setVertexBuffer(0, this.topSkyBuffer);
-            renderPass.draw(0, 10);
+            renderPass.setVertexBuffer(0, this.topSkyBuffer.slice());
+            renderPass.draw(10, 1, 0, 0);
         }
     }
 
@@ -588,20 +494,18 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         Matrix4fStack modelViewStack = RenderSystem.getModelViewStack();
         modelViewStack.pushMatrix();
         modelViewStack.translate(0.0F, 12.0F, 0.0F);
-        GpuBufferSlice dynamicTransforms = RenderSystem.getDynamicUniforms()
-                .writeTransform(modelViewStack, new Vector4f(0.0F, 0.0F, 0.0F, 1.0F), new Vector3f(), new Matrix4f());
-        GpuTextureView colorTexture = Minecraft.getInstance().getMainRenderTarget().getColorTextureView();
-        GpuTextureView depthTexture = Minecraft.getInstance().getMainRenderTarget().getDepthTextureView();
+        GpuBufferSlice dynamicTransforms = RenderSystem.getDynamicUniforms().writeTransform(new Matrix4f(modelViewStack), new Vector4f(0.0F, 0.0F, 0.0F, 1.0F));
+        GpuTextureView colorTexture = this.renderTarget.getColorTextureView();
+        GpuTextureView depthTexture = this.renderTarget.getDepthTextureView();
 
         try (RenderPass renderPass = RenderSystem.getDevice()
                 .createCommandEncoder()
-                .createRenderPass(() -> "Sky dark", colorTexture, OptionalInt.empty(), depthTexture,
-                        OptionalDouble.empty())) {
+                .createRenderPass(() -> "Sky dark", colorTexture, Optional.empty(), depthTexture, OptionalDouble.empty())) {
             renderPass.setPipeline(RenderPipelines.SKY);
             RenderSystem.bindDefaultUniforms(renderPass);
             renderPass.setUniform("DynamicTransforms", dynamicTransforms);
-            renderPass.setVertexBuffer(0, this.bottomSkyBuffer);
-            renderPass.draw(0, 10);
+            renderPass.setVertexBuffer(0, this.bottomSkyBuffer.slice());
+            renderPass.draw(10, 1, 0, 0);
         }
 
         modelViewStack.popMatrix();
@@ -631,21 +535,19 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         float alpha = v * skyBrightness * 0.08f;
 
         GpuBufferSlice dynamicTransforms = RenderSystem.getDynamicUniforms()
-                .writeTransform(RenderSystem.getModelViewMatrix(),
-                        new Vector4f(rgb[0], rgb[1], rgb[2], alpha), new Vector3f(),
-                        new Matrix4f());
-        GpuTextureView colorTexture = Minecraft.getInstance().getMainRenderTarget().getColorTextureView();
-        GpuTextureView depthTexture = Minecraft.getInstance().getMainRenderTarget().getDepthTextureView();
+                .writeTransform(RenderSystem.getModelViewMatrixCopy(), new Vector4f(rgb[0], rgb[1], rgb[2], alpha), new Vector3f(), new Matrix4f());
+        GpuTextureView colorTexture = this.renderTarget.getColorTextureView();
+        GpuTextureView depthTexture = this.renderTarget.getDepthTextureView();
 
         try (RenderPass renderPass = RenderSystem.getDevice()
                 .createCommandEncoder()
-                .createRenderPass(() -> "Atmosphere overlay", colorTexture, OptionalInt.empty(), depthTexture,
+                .createRenderPass(() -> "Atmosphere overlay", colorTexture, Optional.empty(), depthTexture,
                         OptionalDouble.empty())) {
-            renderPass.setPipeline(ReadStarClient.ATMOSPHERE_OVERLAY_PIPELINE);
+            renderPass.setPipeline(ReadstarRenderPipelines.ATMOSPHERE_OVERLAY);
             RenderSystem.bindDefaultUniforms(renderPass);
             renderPass.setUniform("DynamicTransforms", dynamicTransforms);
-            renderPass.setVertexBuffer(0, this.topSkyBuffer);
-            renderPass.draw(0, 10);
+            renderPass.setVertexBuffer(0, this.topSkyBuffer.slice());
+            renderPass.draw(10, 1, 0, 0);
         }
     }
 
@@ -684,7 +586,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         // 有理函数映射 [0, ∞) → [0, 1): s·x/(s·x+1)
         float s = 20.0f;
         float effectiveBrightness = (s * starBrightness) / (s * starBrightness + 1.0f);
-        float fov = Minecraft.getInstance().gameRenderer.getMainCamera().getFov();
+        float fov = Minecraft.getInstance().gameRenderer.mainCamera().getFov();
         // FOV 缩小时提升亮度（星星更大但各项发光不变 → 需要更亮）
         double brightnessFactor = 1.0 + Config.STAR_FOV_BRIGHTNESS_STRENGTH.get() * Math.max(0.0, (70.0 - fov) / 70.0);
         effectiveBrightness = effectiveBrightness * (float)brightnessFactor;
@@ -706,6 +608,10 @@ public class ReadstarSkyRenderer implements AutoCloseable {
 
         // ===== 在天球框架内各自指向世界坐标方向 =====
         if (hasFrame && observerPos != null) {
+            // 提取 observer 大气属性，消除后续 null 警告
+            final boolean obsHasAtm = observer.hasAtmosphere;
+            final int obsAtmHSV = observer.atmosphereHSV;
+
             // ---- ALL CELESTIAL BODIES（统一渲染 luminous + non-luminous） ----
             for (CelestialBody body : manager.getCelestialBodyTreeMap()) {
                 if (body == observer) continue;
@@ -731,8 +637,8 @@ public class ReadstarSkyRenderer implements AutoCloseable {
                     poseStack.mulPose(new Quaternionf().rotateTo(new Vector3f(0, 1, 0), toWorld));
 
                     // 发光体 + 观测者大气 → 渲染光晕
-                    if (body.luminance > 0 && observer.hasAtmosphere && observer.atmosphereHSV != 0) {
-                        int glowHSV = CelestialBody.computeGlowColor(body.starHSV, observer.atmosphereHSV);
+                    if (body.luminance > 0 && obsHasAtm && obsAtmHSV != 0) {
+                        int glowHSV = CelestialBody.computeGlowColor(body.starHSV, obsAtmHSV);
                         renderGlow(glowHSV, size * 3f, rainBrightness, poseStack);
                     }
 
@@ -817,7 +723,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         int totalIndices = totalQuads * 6;
 
         try (var buf = ByteBufferBuilder.exactlySized(vtxSize * totalVertices)) {
-            BufferBuilder builder = new BufferBuilder(buf, VertexFormat.Mode.QUADS, format);
+            BufferBuilder builder = new BufferBuilder(buf, PrimitiveTopology.QUADS, format);
 
             for (Meteor meteor : meteors) {
                 if (gameTime < meteor.startTick()) continue; // 起始时间未到，跳过
@@ -855,21 +761,21 @@ public class ReadstarSkyRenderer implements AutoCloseable {
                     modelViewStack.pushMatrix();
                     modelViewStack.mul(poseStack.last().pose());
                     RenderPipeline renderPipeline = RenderPipelines.STARS;
-                    GpuTextureView colorTexture = Minecraft.getInstance().getMainRenderTarget().getColorTextureView();
-                    GpuTextureView depthTexture = Minecraft.getInstance().getMainRenderTarget().getDepthTextureView();
+                    GpuTextureView colorTexture = this.renderTarget.getColorTextureView();
+                    GpuTextureView depthTexture = this.renderTarget.getDepthTextureView();
                     GpuBuffer indexBuffer = this.quadIndices.getBuffer(totalIndices);
                     GpuBufferSlice dynamicTransforms = RenderSystem.getDynamicUniforms()
                         .writeTransform(modelViewStack, new Vector4f(0.6f, 0.6f, 0.01f, starBrightness * 0.7f), new Vector3f(), new Matrix4f());
 
                     try (RenderPass renderPass = RenderSystem.getDevice()
                             .createCommandEncoder()
-                            .createRenderPass(() -> "Meteors", colorTexture, OptionalInt.empty(), depthTexture, OptionalDouble.empty())) {
+                            .createRenderPass(() -> "Meteors", colorTexture, Optional.empty(), depthTexture, OptionalDouble.empty())) {
                         renderPass.setPipeline(renderPipeline);
                         RenderSystem.bindDefaultUniforms(renderPass);
                         renderPass.setUniform("DynamicTransforms", dynamicTransforms);
-                        renderPass.setVertexBuffer(0, buffer);
+                        renderPass.setVertexBuffer(0, buffer.slice());
                         renderPass.setIndexBuffer(indexBuffer, this.quadIndices.type());
-                        renderPass.drawIndexed(0, 0, totalIndices, 1);
+                        renderPass.drawIndexed(totalIndices, 1, 0, 0, 0);
                     }
 
                     modelViewStack.popMatrix();
@@ -898,20 +804,20 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         GpuBufferSlice dynamicTransforms = RenderSystem.getDynamicUniforms()
                 .writeTransform(modelViewStack, new Vector4f(1.0F, 1.0F, 1.0F, rainBrightness), new Vector3f(),
                         new Matrix4f());
-        GpuTextureView color = Minecraft.getInstance().getMainRenderTarget().getColorTextureView();
-        GpuTextureView depth = Minecraft.getInstance().getMainRenderTarget().getDepthTextureView();
+        GpuTextureView color = this.renderTarget.getColorTextureView();
+        GpuTextureView depth = this.renderTarget.getDepthTextureView();
         GpuBuffer indexBuffer = this.quadIndices.getBuffer(6);
 
         try (RenderPass renderPass = RenderSystem.getDevice()
                 .createCommandEncoder()
-                .createRenderPass(() -> "Sky " + name, color, OptionalInt.empty(), depth, OptionalDouble.empty())) {
+                .createRenderPass(() -> "Sky " + name, color, Optional.empty(), depth, OptionalDouble.empty())) {
             renderPass.setPipeline(RenderPipelines.CELESTIAL);
             RenderSystem.bindDefaultUniforms(renderPass);
             renderPass.setUniform("DynamicTransforms", dynamicTransforms);
             renderPass.bindTexture("Sampler0", this.celestialsAtlas.getTextureView(), this.celestialsAtlas.getSampler());
-            renderPass.setVertexBuffer(0, buffer);
+            renderPass.setVertexBuffer(0, buffer.slice());
             renderPass.setIndexBuffer(indexBuffer, this.quadIndices.type());
-            renderPass.drawIndexed(baseVertex, 0, 6, 1);
+            renderPass.drawIndexed(6, 1, 0, baseVertex, 0);
         }
 
         modelViewStack.popMatrix();
@@ -944,20 +850,20 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         GpuBufferSlice dynamicTransforms = RenderSystem.getDynamicUniforms()
                 .writeTransform(modelViewStack, new Vector4f(rgb[0], rgb[1], rgb[2], alpha), new Vector3f(),
                         new Matrix4f());
-        GpuTextureView color = Minecraft.getInstance().getMainRenderTarget().getColorTextureView();
-        GpuTextureView depth = Minecraft.getInstance().getMainRenderTarget().getDepthTextureView();
+        GpuTextureView color = this.renderTarget.getColorTextureView();
+        GpuTextureView depth = this.renderTarget.getDepthTextureView();
         GpuBuffer indexBuffer = this.quadIndices.getBuffer(6);
 
         try (RenderPass renderPass = RenderSystem.getDevice()
                 .createCommandEncoder()
-                .createRenderPass(() -> "Glow", color, OptionalInt.empty(), depth, OptionalDouble.empty())) {
-            renderPass.setPipeline(ReadStarClient.HALO_PIPELINE);
+                .createRenderPass(() -> "Glow", color, Optional.empty(), depth, OptionalDouble.empty())) {
+            renderPass.setPipeline(ReadstarRenderPipelines.HALO);
             RenderSystem.bindDefaultUniforms(renderPass);
             renderPass.setUniform("DynamicTransforms", dynamicTransforms);
             renderPass.bindTexture("Sampler0", this.celestialsAtlas.getTextureView(), this.celestialsAtlas.getSampler());
-            renderPass.setVertexBuffer(0, this.haloBuffer);
+            renderPass.setVertexBuffer(0, this.haloBuffer.slice());
             renderPass.setIndexBuffer(indexBuffer, this.quadIndices.type());
-            renderPass.drawIndexed(0, 0, 6, 1);
+            renderPass.drawIndexed(6, 1, 0, 0, 0);
         }
 
         modelViewStack.popMatrix();
@@ -1058,7 +964,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         int markerVerts = 4;
         try (ByteBufferBuilder bb = ByteBufferBuilder.exactlySized(
                 markerVerts * DefaultVertexFormat.POSITION_COLOR.getVertexSize())) {
-            BufferBuilder buf = new BufferBuilder(bb, VertexFormat.Mode.TRIANGLE_STRIP,
+            BufferBuilder buf = new BufferBuilder(bb, PrimitiveTopology.TRIANGLE_STRIP,
                     DefaultVertexFormat.POSITION_COLOR);
             buf.addVertex(cometSkyDir.x + tangent1.x + tangent2.x,
                           cometSkyDir.y + tangent1.y + tangent2.y,
@@ -1100,7 +1006,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         int verts = (samples + 1) * 2;
         try (ByteBufferBuilder bb = ByteBufferBuilder.exactlySized(
                 verts * DefaultVertexFormat.POSITION_COLOR.getVertexSize())) {
-            BufferBuilder buf = new BufferBuilder(bb, VertexFormat.Mode.TRIANGLE_STRIP,
+            BufferBuilder buf = new BufferBuilder(bb, PrimitiveTopology.TRIANGLE_STRIP,
                     DefaultVertexFormat.POSITION_COLOR);
             for (int k = 0; k <= samples; k++) {
                 float t = (float) k / samples;
@@ -1162,17 +1068,17 @@ public class ReadstarSkyRenderer implements AutoCloseable {
                 .writeTransform(modelViewStack,
                         new Vector4f(1, 1, 1, 1),
                         new Vector3f(), new Matrix4f());
-        GpuTextureView color = Minecraft.getInstance().getMainRenderTarget().getColorTextureView();
-        GpuTextureView depth = Minecraft.getInstance().getMainRenderTarget().getDepthTextureView();
+        GpuTextureView color = this.renderTarget.getColorTextureView();
+        GpuTextureView depth = this.renderTarget.getDepthTextureView();
 
         try (RenderPass renderPass = RenderSystem.getDevice()
                 .createCommandEncoder()
-                .createRenderPass(() -> label, color, OptionalInt.empty(), depth, OptionalDouble.empty())) {
-            renderPass.setPipeline(ReadStarClient.COMET_TAIL_PIPELINE);
+                .createRenderPass(() -> label, color, Optional.empty(), depth, OptionalDouble.empty())) {
+            renderPass.setPipeline(ReadstarRenderPipelines.COMET_TAIL);
             RenderSystem.bindDefaultUniforms(renderPass);
             renderPass.setUniform("DynamicTransforms", dynamicTransforms);
-            renderPass.setVertexBuffer(0, buffer);
-            renderPass.draw(0, totalVerts);
+            renderPass.setVertexBuffer(0, buffer.slice());
+            renderPass.draw(totalVerts, 1, 0, 0);
         }
         modelViewStack.popMatrix();
     }
@@ -1187,7 +1093,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
 
         // 计算 FOV 补偿系数：tan(currentFov/2) / tan(70°/2)
         // FOV 变小 → 投影放大物体 → compensation < 1 收缩 billboard 以保持屏幕大小
-        Camera camera = Minecraft.getInstance().gameRenderer.getMainCamera();
+        Camera camera = Minecraft.getInstance().gameRenderer.mainCamera();
         float currentFov = camera.getFov();
         float fovCompensation;
         if (currentFov > 0.1f) {
@@ -1201,8 +1107,8 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         Matrix4fStack modelViewStack = RenderSystem.getModelViewStack();
         modelViewStack.pushMatrix();
         modelViewStack.mul(poseStack.last().pose());
-        GpuTextureView colorTexture = Minecraft.getInstance().getMainRenderTarget().getColorTextureView();
-        GpuTextureView depthTexture = Minecraft.getInstance().getMainRenderTarget().getDepthTextureView();
+        GpuTextureView colorTexture = this.renderTarget.getColorTextureView();
+        GpuTextureView depthTexture = this.renderTarget.getDepthTextureView();
         GpuBuffer indexBuffer = this.quadIndices.getBuffer(this.starIndexCount);
 
         // 将 FovCompensation 编码到 TextureMat[0][0]（着色器中 #define FovCompensation TextureMat[0][0]）
@@ -1215,15 +1121,15 @@ public class ReadstarSkyRenderer implements AutoCloseable {
 
         try (RenderPass renderPass = RenderSystem.getDevice()
                 .createCommandEncoder()
-                .createRenderPass(() -> "Stars", colorTexture, OptionalInt.empty(), depthTexture,
+                .createRenderPass(() -> "Stars", colorTexture, Optional.empty(), depthTexture,
                         OptionalDouble.empty())) {
-            renderPass.setPipeline(ReadStarClient.STAR_TEXTURED_PIPELINE);
+            renderPass.setPipeline(ReadstarRenderPipelines.STAR_TEXTURED);
             RenderSystem.bindDefaultUniforms(renderPass);
             renderPass.setUniform("DynamicTransforms", dynamicTransforms);
             renderPass.bindTexture("Sampler0", this.starsAtlas.getTextureView(), this.starsAtlas.getSampler());
-            renderPass.setVertexBuffer(0, this.starBuffer);
+            renderPass.setVertexBuffer(0, this.starBuffer.slice());
             renderPass.setIndexBuffer(indexBuffer, this.quadIndices.type());
-            renderPass.drawIndexed(0, 0, this.starIndexCount, 1);
+            renderPass.drawIndexed(this.starIndexCount, 1, 0, 0, 0);
         }
 
         modelViewStack.popMatrix();
@@ -1243,18 +1149,18 @@ public class ReadstarSkyRenderer implements AutoCloseable {
             GpuBufferSlice dynamicTransforms = RenderSystem.getDynamicUniforms()
                     .writeTransform(modelViewStack, ARGB.vector4fFromARGB32(sunriseAndSunsetColor), new Vector3f(),
                             new Matrix4f());
-            GpuTextureView color = Minecraft.getInstance().getMainRenderTarget().getColorTextureView();
-            GpuTextureView depth = Minecraft.getInstance().getMainRenderTarget().getDepthTextureView();
+            GpuTextureView color = this.renderTarget.getColorTextureView();
+            GpuTextureView depth = this.renderTarget.getDepthTextureView();
 
             try (RenderPass renderPass = RenderSystem.getDevice()
                     .createCommandEncoder()
-                    .createRenderPass(() -> "Sunrise sunset", color, OptionalInt.empty(), depth,
+                    .createRenderPass(() -> "Sunrise sunset", color, Optional.empty(), depth,
                             OptionalDouble.empty())) {
                 renderPass.setPipeline(RenderPipelines.SUNRISE_SUNSET);
                 RenderSystem.bindDefaultUniforms(renderPass);
                 renderPass.setUniform("DynamicTransforms", dynamicTransforms);
-                renderPass.setVertexBuffer(0, this.sunriseBuffer);
-                renderPass.draw(0, 18);
+                renderPass.setVertexBuffer(0, this.sunriseBuffer.slice());
+                renderPass.draw(18, 1, 0, 0);
             }
 
             modelViewStack.popMatrix();
@@ -1263,25 +1169,25 @@ public class ReadstarSkyRenderer implements AutoCloseable {
     }
 
     public void renderEndSky() {
-        RenderSystem.AutoStorageIndexBuffer autoIndices = RenderSystem.getSequentialBuffer(VertexFormat.Mode.QUADS);
+        RenderSystem.AutoStorageIndexBuffer autoIndices = RenderSystem.getSequentialBuffer(PrimitiveTopology.QUADS);
         GpuBuffer indexBuffer = autoIndices.getBuffer(36);
-        GpuTextureView colorTexture = Minecraft.getInstance().getMainRenderTarget().getColorTextureView();
-        GpuTextureView depthTexture = Minecraft.getInstance().getMainRenderTarget().getDepthTextureView();
+        GpuTextureView colorTexture = this.renderTarget.getColorTextureView();
+        GpuTextureView depthTexture = this.renderTarget.getDepthTextureView();
         GpuBufferSlice dynamicTransforms = RenderSystem.getDynamicUniforms()
-                .writeTransform(RenderSystem.getModelViewMatrix(), new Vector4f(1.0F, 1.0F, 1.0F, 1.0F), new Vector3f(),
+                .writeTransform(RenderSystem.getModelViewMatrixCopy(), new Vector4f(1.0F, 1.0F, 1.0F, 1.0F), new Vector3f(),
                         new Matrix4f());
 
         try (RenderPass renderPass = RenderSystem.getDevice()
                 .createCommandEncoder()
-                .createRenderPass(() -> "End sky", colorTexture, OptionalInt.empty(), depthTexture,
+                .createRenderPass(() -> "End sky", colorTexture, Optional.empty(), depthTexture,
                         OptionalDouble.empty())) {
             renderPass.setPipeline(RenderPipelines.END_SKY);
             RenderSystem.bindDefaultUniforms(renderPass);
             renderPass.setUniform("DynamicTransforms", dynamicTransforms);
             renderPass.bindTexture("Sampler0", this.endSkyTexture.getTextureView(), this.endSkyTexture.getSampler());
-            renderPass.setVertexBuffer(0, this.endSkyBuffer);
+            renderPass.setVertexBuffer(0, this.endSkyBuffer.slice());
             renderPass.setIndexBuffer(indexBuffer, autoIndices.type());
-            renderPass.drawIndexed(0, 0, 36, 1);
+            renderPass.drawIndexed(36, 1, 0, 0, 0);
         }
     }
 
@@ -1291,26 +1197,25 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         Matrix4fStack modelViewStack = RenderSystem.getModelViewStack();
         modelViewStack.pushMatrix();
         modelViewStack.mul(poseStack.last().pose());
-        modelViewStack.translate(0.0F, 100.0F, 0.0F);
         modelViewStack.scale(60.0F, 1.0F, 60.0F);
         GpuBufferSlice dynamicTransforms = RenderSystem.getDynamicUniforms()
                 .writeTransform(modelViewStack, new Vector4f(intensity, intensity, intensity, intensity),
                         new Vector3f(), new Matrix4f());
-        GpuTextureView color = Minecraft.getInstance().getMainRenderTarget().getColorTextureView();
-        GpuTextureView depth = Minecraft.getInstance().getMainRenderTarget().getDepthTextureView();
+        GpuTextureView color = this.renderTarget.getColorTextureView();
+        GpuTextureView depth = this.renderTarget.getDepthTextureView();
         GpuBuffer indexBuffer = this.quadIndices.getBuffer(6);
 
         try (RenderPass renderPass = RenderSystem.getDevice()
                 .createCommandEncoder()
-                .createRenderPass(() -> "End flash", color, OptionalInt.empty(), depth, OptionalDouble.empty())) {
+                .createRenderPass(() -> "End flash", color, Optional.empty(), depth, OptionalDouble.empty())) {
             renderPass.setPipeline(RenderPipelines.CELESTIAL);
             RenderSystem.bindDefaultUniforms(renderPass);
             renderPass.setUniform("DynamicTransforms", dynamicTransforms);
             renderPass.bindTexture("Sampler0", this.celestialsAtlas.getTextureView(),
                     this.celestialsAtlas.getSampler());
-            renderPass.setVertexBuffer(0, this.endFlashBuffer);
+            renderPass.setVertexBuffer(0, this.endFlashBuffer.slice());
             renderPass.setIndexBuffer(indexBuffer, this.quadIndices.type());
-            renderPass.drawIndexed(0, 0, 6, 1);
+            renderPass.drawIndexed(6, 1, 0, 0, 0);
         }
 
         modelViewStack.popMatrix();
@@ -1320,9 +1225,9 @@ public class ReadstarSkyRenderer implements AutoCloseable {
      * 在望远镜视角下，于左上角显示高度角，并在对准的恒星位置跟随渲染 tooltip。
      * 由 ReadStarClient.onRenderGui 每帧调用。
      */
-    public void renderHud(GuiGraphicsExtractor g, CelestialBody observer) {
+    public void renderHud(GuiGraphicsExtractor g, CelestialBody observer, List<Star> stars) {
         Minecraft mc = Minecraft.getInstance();
-        if (mc.player == null || mc.options.hideGui) return;
+        if (mc.player == null) return;
         if (!mc.player.isScoping()) return; // 仅在使用望远镜时显示
         if (observer == null) return;
 
@@ -1338,9 +1243,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         // 查找视线最近的恒星
         Star nearestStar = null;
         float bestDot = -2.0f;
-        for (Star s : this.stars) {
-            if (s.vmag > this.maxVmag)
-                continue;
+        for (Star s : stars) {
             float dot = celestialDir.dot(s.direction);
             if (dot > bestDot) {
                 bestDot = dot;
@@ -1388,7 +1291,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         float dotU = starWorldDir.dot(up);
 
         // 映射到屏幕像素
-        Camera camera = mc.gameRenderer.getMainCamera();
+        Camera camera = mc.gameRenderer.mainCamera();
         float fov = camera.getFov();
         int screenW = mc.getWindow().getGuiScaledWidth();
         int screenH = mc.getWindow().getGuiScaledHeight();
