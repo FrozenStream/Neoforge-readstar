@@ -47,11 +47,11 @@ public class TestMessageCommand {
      * 向所有玩家发送消息
      */
     private static int sendMessageToAll(CommandContext<CommandSourceStack> context, String message) {
-        NetworkHelper.sendMessageToAllPlayers(message);
+        NetworkHelper.sendMessageToAllPlayers(Component.literal(message));
         
         // 向命令执行者发送确认消息
         context.getSource().sendSuccess(
-            () -> Component.literal("已向所有玩家发送消息: " + message),
+            () -> Component.translatable("command.readstar.message.all.success", message),
             true
         );
         
@@ -62,11 +62,11 @@ public class TestMessageCommand {
      * 向指定玩家发送消息
      */
     private static int sendMessageToPlayer(CommandContext<CommandSourceStack> context, ServerPlayer target, String message) {
-        NetworkHelper.sendMessageToPlayer(target, message);
+        NetworkHelper.sendMessageToPlayer(target, Component.literal(message));
         
         // 向命令执行者发送确认消息
         context.getSource().sendSuccess(
-            () -> Component.literal("已向玩家 " + target.getName().getString() + " 发送消息: " + message),
+            () -> Component.translatable("command.readstar.message.player.success", target.getName().getString(), message),
             true
         );
         
