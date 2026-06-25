@@ -35,7 +35,8 @@ public class ReadstarSkyboxRenderer implements CustomSkyboxRenderer, ResourceMan
 
     private ReadstarSkyRenderer skyRenderer = null;
     private CelestialBody observer;
-    public List<ReadstarSkyRenderer.Star> stars;
+    private List<ReadstarSkyRenderer.Star> stars;
+    public List<ReadstarSkyRenderer.Star> brightstars;
 
     private ReadstarSkyboxRenderer() {}
 
@@ -54,6 +55,7 @@ public class ReadstarSkyboxRenderer implements CustomSkyboxRenderer, ResourceMan
         }
 
         this.stars = parseStars(resourceManager, 6.5f);
+        this.brightstars = filterStars(6);
         Minecraft minecraft = Minecraft.getInstance();
         this.skyRenderer = new ReadstarSkyRenderer(minecraft.getTextureManager(), minecraft.getAtlasManager(), minecraft.gameRenderer.mainRenderTarget());
         this.skyRenderer.buildStarsBuffer(this.stars);
@@ -109,7 +111,12 @@ public class ReadstarSkyboxRenderer implements CustomSkyboxRenderer, ResourceMan
 
     public void rebuildStarswithVmag(float vmag) {
         this.stars = parseStars(Minecraft.getInstance().getResourceManager(), vmag);
+        this.brightstars = filterStars(6);
         this.skyRenderer.buildStarsBuffer(this.stars);
+    }
+
+    private List<ReadstarSkyRenderer.Star> filterStars(float vmag){
+        return this.stars.stream().filter(star -> star.vmag() <= vmag).toList();
     }
 
     @Override
@@ -124,8 +131,8 @@ public class ReadstarSkyboxRenderer implements CustomSkyboxRenderer, ResourceMan
             }
         } else {
             PoseStack poseStack = new PoseStack();
-            // 1. 天空底色（原版 biome skyColor，无大气混合）
-            skyRenderer.renderSkyDisc(state.skyColor);
+            // 1. 天空底色 — 天球图纹理（跟随 observer 天球坐标系旋转）
+            skyRenderer.renderSkyDisc(state.skyColor, this.observer);
             skyRenderer.renderSunriseAndSunset(poseStack, state.sunAngle, state.sunriseAndSunsetColor);
             // 2. 天体 + 星星
             skyRenderer.renderCelestialAndStars(poseStack, state.rainBrightness, state.starBrightness, this.observer, levelRenderState.gameTime);
