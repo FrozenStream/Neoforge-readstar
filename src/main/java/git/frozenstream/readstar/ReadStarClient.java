@@ -1,12 +1,5 @@
 package git.frozenstream.readstar;
 
-import com.mojang.blaze3d.pipeline.BlendFunction;
-import com.mojang.blaze3d.pipeline.ColorTargetState;
-import com.mojang.blaze3d.pipeline.RenderPipeline;
-import com.mojang.blaze3d.vertex.DefaultVertexFormat;
-import com.mojang.blaze3d.vertex.VertexFormat;
-import com.mojang.blaze3d.vertex.VertexFormat.Mode;
-import com.mojang.blaze3d.vertex.VertexFormatElement;
 import com.mojang.brigadier.arguments.FloatArgumentType;
 
 import git.frozenstream.readstar.blocks.entity.ArmillarySphereBlockEntity;
@@ -21,7 +14,6 @@ import git.frozenstream.readstar.sprite.MoonSpriteSource;
 import git.frozenstream.readstar.sprite.StarSpriteSource;
 import git.frozenstream.readstar.sprite.SunSpriteSource;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.client.resources.model.sprite.AtlasManager;
 import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.Component;
@@ -63,94 +55,10 @@ public class ReadStarClient {
             "textures/atlas/star.png");
     public static final Identifier STAR_ATLAS_INFO = Identifier.fromNamespaceAndPath(ReadStar.MODID, "star");
 
-    /**
-     * 自定义管线：使用 star_fov shader，支持 Position(center) + Offset(billboard) 分离，
-     * 通过 FovCompensation uniform 保持星点屏幕大小不受 FOV 影响。
-     */
-    public static RenderPipeline STAR_TEXTURED_PIPELINE;
-
-    /** 自定义顶点元素：billboard 偏移量 (vec3 float)，存储 rotation × (方向 × 星点大小) */
-    public static final VertexFormatElement OFFSET_ELEMENT = VertexFormatElement.register(
-            VertexFormatElement.findNextId(), 0, VertexFormatElement.Type.FLOAT, false, 3);
-
-    /** 自定义顶点格式：Position(center) + UV0 + Color + Offset */
-    public static final VertexFormat POSITION_TEX_COLOR_OFFSET = VertexFormat.builder()
-            .add("Position", VertexFormatElement.POSITION)
-            .add("UV0", VertexFormatElement.UV0)
-            .add("Color", VertexFormatElement.COLOR)
-            .add("Offset", OFFSET_ELEMENT)
-            .build();
-
-    /**
-     * 自定义管线：彗尾测试渲染，使用 TRIANGLE_STRIP + 半透明混合。
-     * 与 SUNRISE_SUNSET 类似但使用 TRIANGLE_STRIP 模式，适合带状几何体。
-     */
-    public static RenderPipeline COMET_TAIL_PIPELINE;
-
-    /**
-     * 光晕管线：POSITION_TEX_COLOR + OVERLAY 混合。
-     * 纹理为灰度光晕图，顶点色提供 RGB 着色。
-     */
-    public static RenderPipeline HALO_PIPELINE;
-
-    /**
-     * 大气叠加管线：POSITION + TRANSLUCENT 混合。
-     * 复用 SKY 的 TRIANGLE_FAN 顶点缓冲，在全天空范围叠加大气散射色。
-     */
-    public static RenderPipeline ATMOSPHERE_OVERLAY_PIPELINE;
 
     @SubscribeEvent
     static void onRegisterStarPipelines(RegisterRenderPipelinesEvent event) {
-        // 自定义管线：使用 star_fov shader（分离 center + billboard offset），
-        // FovCompensation 通过 DynamicTransforms.TextureMat[0][0] 传递。
-        STAR_TEXTURED_PIPELINE = RenderPipeline
-                .builder(new RenderPipeline.Snippet[] { RenderPipelines.MATRICES_PROJECTION_SNIPPET })
-                .withLocation(Identifier.fromNamespaceAndPath(ReadStar.MODID, "star_textured"))
-                .withVertexShader(Identifier.fromNamespaceAndPath(ReadStar.MODID, "core/star_fov"))
-                .withFragmentShader(Identifier.fromNamespaceAndPath(ReadStar.MODID, "core/star_fov"))
-                .withSampler("Sampler0")
-                .withColorTargetState(new ColorTargetState(BlendFunction.OVERLAY))
-                .withVertexFormat(POSITION_TEX_COLOR_OFFSET, Mode.QUADS)
-                .build();
-        event.registerPipeline(STAR_TEXTURED_PIPELINE);
-        ReadStar.LOGGER.info("Registered custom star pipeline: readstar:star_textured (fov-aware)");
-
-        // 彗尾测试管线：TRIANGLE_STRIP + POSITION_COLOR
-        COMET_TAIL_PIPELINE = RenderPipeline
-                .builder(new RenderPipeline.Snippet[] { RenderPipelines.MATRICES_PROJECTION_SNIPPET })
-                .withLocation(Identifier.fromNamespaceAndPath(ReadStar.MODID, "pipeline/comet_tail"))
-                .withVertexShader(Identifier.fromNamespaceAndPath("minecraft", "core/position_color"))
-                .withFragmentShader(Identifier.fromNamespaceAndPath("minecraft", "core/position_color"))
-                .withColorTargetState(new ColorTargetState(BlendFunction.TRANSLUCENT))
-                .withVertexFormat(DefaultVertexFormat.POSITION_COLOR, Mode.TRIANGLE_STRIP)
-                .build();
-        event.registerPipeline(COMET_TAIL_PIPELINE);
-        ReadStar.LOGGER.info("Registered custom comet tail pipeline: readstar:pipeline/comet_tail");
-
-        // 光晕管线：POSITION_TEX_COLOR + OVERLAY，灰度纹理 × 顶点色
-        HALO_PIPELINE = RenderPipeline
-                .builder(new RenderPipeline.Snippet[] { RenderPipelines.MATRICES_PROJECTION_SNIPPET })
-                .withLocation(Identifier.fromNamespaceAndPath(ReadStar.MODID, "pipeline/halo"))
-                .withVertexShader(Identifier.fromNamespaceAndPath("minecraft", "core/position_tex_color"))
-                .withFragmentShader(Identifier.fromNamespaceAndPath("minecraft", "core/position_tex_color"))
-                .withSampler("Sampler0")
-                .withColorTargetState(new ColorTargetState(BlendFunction.OVERLAY))
-                .withVertexFormat(DefaultVertexFormat.POSITION_TEX_COLOR, Mode.QUADS)
-                .build();
-        event.registerPipeline(HALO_PIPELINE);
-        ReadStar.LOGGER.info("Registered halo pipeline: readstar:pipeline/halo");
-
-        // 大气叠加管线：POSITION + TRANSLUCENT，全天空半透明叠加大气色
-        ATMOSPHERE_OVERLAY_PIPELINE = RenderPipeline
-                .builder(new RenderPipeline.Snippet[] { RenderPipelines.MATRICES_PROJECTION_SNIPPET })
-                .withLocation(Identifier.fromNamespaceAndPath(ReadStar.MODID, "pipeline/atmosphere_overlay"))
-                .withVertexShader(Identifier.fromNamespaceAndPath("minecraft", "core/position"))
-                .withFragmentShader(Identifier.fromNamespaceAndPath("minecraft", "core/position"))
-                .withColorTargetState(new ColorTargetState(BlendFunction.TRANSLUCENT))
-                .withVertexFormat(DefaultVertexFormat.POSITION, Mode.TRIANGLE_FAN)
-                .build();
-        event.registerPipeline(ATMOSPHERE_OVERLAY_PIPELINE);
-        ReadStar.LOGGER.info("Registered atmosphere overlay pipeline: readstar:pipeline/atmosphere_overlay");
+        ReadstarRenderPipelines.registerAll(event);
     }
 
     public ReadStarClient(ModContainer container) {
@@ -197,8 +105,7 @@ public class ReadStarClient {
         // 注册浑天仪方块实体渲染器
         event.registerBlockEntityRenderer(
                 ArmillarySphereBlockEntity.TYPE,
-                ArmillarySphereRenderer::new
-        );
+                ArmillarySphereRenderer::new);
         ReadStar.LOGGER.info("ReadStarClient: Registered ArmillarySphereRenderer");
     }
 
@@ -296,32 +203,29 @@ public class ReadStarClient {
     @SubscribeEvent
     static void onRegisterClientCommands(RegisterClientCommandsEvent event) {
         event.getDispatcher().register(
-            Commands.literal("readstar")
-                .then(Commands.literal("skybox")
-                    .then(Commands.literal("vmag")
-                        .then(Commands.argument("value", FloatArgumentType.floatArg(0.0f, 10.0f))
-                            .executes(ctx -> {
-                                float vmag = FloatArgumentType.getFloat(ctx, "value");
-                                ReadstarSkyRenderer renderer = skyboxRenderer.getSkyRenderer();
-                                if (renderer != null) {
-                                    renderer.rebuildStarBuffer(vmag);
-                                    ctx.getSource().sendSuccess(
-                                        () -> Component.literal(
-                                            "§a已按 Vmag ≤ " + String.format("%.1f", vmag)
-                                            + " 重建星星缓冲（当前阈值: " + String.format("%.1f", renderer.getMaxVmag()) + "）"),
-                                        false
-                                    );
-                                } else {
-                                    ctx.getSource().sendFailure(
-                                        Component.literal("§c天空渲染器未初始化，请等待资源加载完成")
-                                    );
-                                }
-                                return 1;
-                            })
-                        )
-                    )
-                )
-        );
+                Commands.literal("readstar")
+                        .then(Commands.literal("skybox")
+                                .then(Commands.literal("vmag")
+                                        .then(Commands.argument("value", FloatArgumentType.floatArg(0.0f, 10.0f))
+                                                .executes(ctx -> {
+                                                    float vmag = FloatArgumentType.getFloat(ctx, "value");
+                                                    ReadstarSkyRenderer renderer = skyboxRenderer.getSkyRenderer();
+                                                    if (renderer != null) {
+                                                        renderer.rebuildStarBuffer(vmag);
+                                                        ctx.getSource().sendSuccess(
+                                                                () -> Component.literal(
+                                                                        "§a已按 Vmag ≤ " + String.format("%.1f", vmag)
+                                                                                + " 重建星星缓冲（当前阈值: "
+                                                                                + String.format("%.1f",
+                                                                                        renderer.getMaxVmag())
+                                                                                + "）"),
+                                                                false);
+                                                    } else {
+                                                        ctx.getSource().sendFailure(
+                                                                Component.literal("§c天空渲染器未初始化，请等待资源加载完成"));
+                                                    }
+                                                    return 1;
+                                                })))));
     }
 
     /**
