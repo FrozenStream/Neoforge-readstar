@@ -73,9 +73,6 @@ public class ReadstarSkyRenderer implements AutoCloseable {
     // private static final float END_FLASH_SCALE = 60.0F;
     private final TextureAtlas celestialsAtlas;
     private final TextureAtlas starsAtlas;
-    private final List<Star> stars;
-    /** 当前星星缓冲区使用的最大 Vmag 阈值（仅 vmag <= maxVmag 的星被包含） */
-    private float maxVmag = 6.0f;
     private GpuBuffer starBuffer;
     private final GpuBuffer topSkyBuffer;
     private final GpuBuffer bottomSkyBuffer;
@@ -102,11 +99,9 @@ public class ReadstarSkyRenderer implements AutoCloseable {
      */
     public record Star(String name, Vector3f direction, float vmag, int color) {}
 
-    public ReadstarSkyRenderer(TextureManager textureManager, AtlasManager atlasManager, ResourceManager resourceManager) {
+    public ReadstarSkyRenderer(TextureManager textureManager, AtlasManager atlasManager) {
         this.celestialsAtlas = atlasManager.getAtlasOrThrow(ReadStarClient.CELESTIAL_ATLAS_INFO);
         this.starsAtlas = atlasManager.getAtlasOrThrow(ReadStarClient.STAR_ATLAS_INFO);
-        this.stars = parseStars(resourceManager);
-        this.starBuffer = buildStarsBuffer(filterByVmag(this.stars));
         this.endSkyBuffer = buildEndSky();
         this.endSkyTexture = this.getTexture(textureManager, END_SKY_LOCATION);
         this.endFlashBuffer = buildEndFlashQuad(this.celestialsAtlas);
@@ -283,92 +278,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         return var6;
     }
 
-    /**
-     * 扫描 stars/ 目录下所有 .json 文件，合并解析星表数据，返回不可变列表。
-     */
-    private static List<Star> parseStars(ResourceManager resourceManager) {
-        List<Star> result = new ArrayList<>();
-
-        Map<Identifier, Resource> starResources = resourceManager.listResources(
-                "stars", id -> id.getPath().endsWith(".json"));
-
-        if (starResources.isEmpty()) {
-            ReadStar.LOGGER.warn("No star data files found in stars/");
-            return List.of();
-        }
-
-        for (Map.Entry<Identifier, Resource> entry : starResources.entrySet()) {
-            Identifier resPath = entry.getKey();
-            try (InputStreamReader reader = new InputStreamReader(entry.getValue().open(),
-                    StandardCharsets.UTF_8)) {
-                JsonArray starsArray = JsonParser.parseReader(reader).getAsJsonObject().getAsJsonArray("Stars");
-                if (starsArray == null) {
-                    ReadStar.LOGGER.warn("No 'Stars' array in: {}", resPath);
-                    continue;
-                }
-                int before = result.size();
-                for (int i = 0; i < starsArray.size(); i++) {
-                    JsonObject obj = starsArray.get(i).getAsJsonObject();
-                    JsonArray pos = obj.getAsJsonArray("position");
-                    float px = pos.get(0).getAsFloat();
-                    float py = pos.get(1).getAsFloat();
-                    float pz = pos.get(2).getAsFloat();
-                    String name = obj.get("name").getAsString();
-                    float vmag = obj.get("Vmag").getAsFloat();
-                    int color = obj.get("color").getAsInt();
-                    result.add(new Star(name, new Vector3f(px, py, pz).normalize(), vmag, color));
-                }
-                ReadStar.LOGGER.info("Parsed {} stars from {}", result.size() - before, resPath);
-            } catch (Exception e) {
-                ReadStar.LOGGER.error("Failed to load star data from {}: {}", resPath, e.getMessage());
-            }
-        }
-
-        ReadStar.LOGGER.info("Total parsed {} stars from {} file(s)", result.size(), starResources.size());
-        return List.copyOf(result);
-    }
-
-    /**
-     * 按当前 maxVmag 阈值重建星星 GPU 缓冲。
-     * 关闭旧缓冲，过滤星表，重新构建并替换 starBuffer。
-     * @param newMaxVmag 新的 Vmag 上限（0~10），只包含 vmag <= newMaxVmag 的星星
-     */
-    public void rebuildStarBuffer(float newMaxVmag) {
-        float clamped = Math.max(0.0f, Math.min(10.0f, newMaxVmag));
-        if (clamped == this.maxVmag) return;
-        this.maxVmag = clamped;
-
-        // 关闭旧缓冲
-        if (this.starBuffer != null) {
-            this.starBuffer.close();
-        }
-
-        // 按 vmag 过滤星表
-        List<Star> filtered = filterByVmag(this.stars);
-
-        // 重建
-        this.starBuffer = buildStarsBuffer(filtered);
-        ReadStar.LOGGER.info("Rebuilt star buffer with maxVmag={}: {} / {} stars",
-                this.maxVmag, filtered.size(), this.stars.size());
-    }
-
-    /** 按当前 maxVmag 阈值过滤星表 */
-    private List<Star> filterByVmag(List<Star> source) {
-        List<Star> filtered = new ArrayList<>();
-        for (Star s : source) {
-            if (s.vmag <= this.maxVmag) {
-                filtered.add(s);
-            }
-        }
-        return filtered;
-    }
-
-    /** 获取当前 maxVmag 阈值 */
-    public float getMaxVmag() {
-        return maxVmag;
-    }
-
-    private GpuBuffer buildStarsBuffer(List<Star> stars) {
+    public void buildStarsBuffer(List<Star> stars) {
         int starCount = stars.size();
         VertexFormat format = ReadstarRenderPipelines.POSITION_TEX_COLOR_OFFSET;
         int vtxSize = format.getVertexSize();
@@ -395,7 +305,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
             try (ByteBufferBuilder buf = ByteBufferBuilder.exactlySized(1)) {
                 BufferBuilder builder = new BufferBuilder(buf, VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX_COLOR);
                 try (MeshData mesh = builder.buildOrThrow()) {
-                    return RenderSystem.getDevice().createBuffer(() -> "Stars vertex buffer (empty)", 32,
+                    this.starBuffer = RenderSystem.getDevice().createBuffer(() -> "Stars vertex buffer (empty)", 32,
                             mesh.vertexBuffer());
                 }
             }
@@ -468,7 +378,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
                 try (ByteBufferBuilder emptyBuf = ByteBufferBuilder.exactlySized(1)) {
                     BufferBuilder b = new BufferBuilder(emptyBuf, VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX_COLOR);
                     try (MeshData mesh = b.buildOrThrow()) {
-                        return RenderSystem.getDevice().createBuffer(() -> "Stars vertex buffer (fallback)", 32, mesh.vertexBuffer());
+                        this.starBuffer = RenderSystem.getDevice().createBuffer(() -> "Stars vertex buffer (fallback)", 32, mesh.vertexBuffer());
                     }
                 }
             }
@@ -477,7 +387,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
             this.starIndexCount = totalVertices / 4 * 6;
             ReadStar.LOGGER.info("Built star vertex buffer with {} indices ({} stars, {} with glow)",
                     this.starIndexCount, starCount, glowStarCount);
-            return RenderSystem.getDevice().createBuffer(() -> "Stars vertex buffer", 32, result.byteBuffer());
+            this.starBuffer = RenderSystem.getDevice().createBuffer(() -> "Stars vertex buffer", 32, result.byteBuffer());
         }
     }
 
@@ -1322,7 +1232,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
      * 在望远镜视角下，于左上角显示高度角，并在对准的恒星位置跟随渲染 tooltip。
      * 由 ReadStarClient.onRenderGui 每帧调用。
      */
-    public void renderHud(GuiGraphicsExtractor g, CelestialBody observer) {
+    public void renderHud(GuiGraphicsExtractor g, CelestialBody observer, List<Star> stars) {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null || mc.options.hideGui) return;
         if (!mc.player.isScoping()) return; // 仅在使用望远镜时显示
@@ -1340,9 +1250,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         // 查找视线最近的恒星
         Star nearestStar = null;
         float bestDot = -2.0f;
-        for (Star s : this.stars) {
-            if (s.vmag > this.maxVmag)
-                continue;
+        for (Star s : stars) {
             float dot = celestialDir.dot(s.direction);
             if (dot > bestDot) {
                 bestDot = dot;
