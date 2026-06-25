@@ -50,6 +50,9 @@ public class ReadstarRenderPipelines {
     /** 大气叠加管线：POSITION + TRANSLUCENT，全天空半透明叠加大气散射色 */
     public static final RenderPipeline ATMOSPHERE_OVERLAY;
 
+    /** 天球图管线：POSITION_TEX，使用双半球天球图纹理替代原版纯色天空底色 */
+    public static final RenderPipeline CELESTIAL_SPHERE;
+
     static {
         STAR_TEXTURED = RenderPipeline
                 .builder(new RenderPipeline.Snippet[] { RenderPipelines.MATRICES_PROJECTION_SNIPPET })
@@ -88,6 +91,15 @@ public class ReadstarRenderPipelines {
                 .withColorTargetState(new ColorTargetState(BlendFunction.TRANSLUCENT))
                 .withVertexFormat(DefaultVertexFormat.POSITION, Mode.TRIANGLE_FAN)
                 .build();
+
+        CELESTIAL_SPHERE = RenderPipeline
+                .builder(new RenderPipeline.Snippet[] { RenderPipelines.MATRICES_PROJECTION_SNIPPET })
+                .withLocation(Identifier.fromNamespaceAndPath(ReadStar.MODID, "pipeline/celestial_sphere"))
+                .withVertexShader(Identifier.fromNamespaceAndPath("minecraft", "core/position_tex_color"))
+                .withFragmentShader(Identifier.fromNamespaceAndPath("minecraft", "core/position_tex_color"))
+                .withSampler("Sampler0")
+                .withVertexFormat(DefaultVertexFormat.POSITION_TEX_COLOR, Mode.TRIANGLES)
+                .build();
     }
 
     /**
@@ -106,5 +118,8 @@ public class ReadstarRenderPipelines {
 
         event.registerPipeline(ATMOSPHERE_OVERLAY);
         ReadStar.LOGGER.info("Registered atmosphere overlay pipeline: readstar:pipeline/atmosphere_overlay");
+
+        event.registerPipeline(CELESTIAL_SPHERE);
+        ReadStar.LOGGER.info("Registered celestial sphere pipeline: readstar:pipeline/celestial_sphere");
     }
 }

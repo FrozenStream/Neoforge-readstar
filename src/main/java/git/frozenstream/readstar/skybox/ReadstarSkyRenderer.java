@@ -71,6 +71,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
     // private static final int END_SKY_QUAD_COUNT = 6;
     // private static final float END_FLASH_HEIGHT = 100.0F;
     // private static final float END_FLASH_SCALE = 60.0F;
+    private static final Identifier CELESTIAL_SPHERE_LOCATION = Identifier.fromNamespaceAndPath(ReadStar.MODID, "textures/environment/test_dual_blurred.png");
     private final TextureAtlas celestialsAtlas;
     private final TextureAtlas starsAtlas;
     private GpuBuffer starBuffer;
@@ -86,6 +87,9 @@ public class ReadstarSkyRenderer implements AutoCloseable {
     private final RenderSystem.AutoStorageIndexBuffer quadIndices = RenderSystem
             .getSequentialBuffer(VertexFormat.Mode.QUADS);
     private final AbstractTexture endSkyTexture;
+    private final AbstractTexture celestialSphereTexture;
+    private final GpuBuffer topCelestialSphereBuffer;
+    private final GpuBuffer bottomCelestialSphereBuffer;
     private int starIndexCount;
     /** 最近一帧计算的有效星光亮度，供 renderHud 读取 */
     private float lastStarBrightness;
@@ -107,6 +111,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         this.endFlashBuffer = buildEndFlashQuad(this.celestialsAtlas);
         this.sunriseBuffer = this.buildSunriseFan();
         this.haloBuffer = buildHaloQuad(this.celestialsAtlas);
+        this.celestialSphereTexture = this.getTexture(textureManager, CELESTIAL_SPHERE_LOCATION);
 
         try (ByteBufferBuilder builder = ByteBufferBuilder.exactlySized(10 * DefaultVertexFormat.POSITION.getVertexSize())) {
             BufferBuilder bufferBuilder = new BufferBuilder(builder, VertexFormat.Mode.TRIANGLE_FAN, DefaultVertexFormat.POSITION);
@@ -123,6 +128,10 @@ public class ReadstarSkyRenderer implements AutoCloseable {
                 this.bottomSkyBuffer = RenderSystem.getDevice().createBuffer(() -> "Bottom sky vertex buffer", 32, meshData.vertexBuffer());
             }
         }
+
+        // 构建天球图纹理半球天穹网格（QUADS 经纬球）
+        this.topCelestialSphereBuffer = buildCelestialSphereDome(true);
+        this.bottomCelestialSphereBuffer = buildCelestialSphereDome(false);
     }
 
     /**
@@ -401,6 +410,92 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         }
     }
 
+    /** 天穹网格细分参数 */
+    private static final int DOME_STACKS = 16; // 纬度细分（天顶→地平线）
+    private static final int DOME_SLICES = 32; // 经度细分（绕一圈）
+    private static final float DOME_RADIUS = 100.0F; // 球半径，与星星渲染距离一致
+
+    /**
+     * 构建半球天穹网格（TRIANGLES），使用等距矩形投影（equirectangular）UV 映射。
+     * 每个四边形拆为两个三角形，分别保证内侧面朝向球心（相机位置）。
+     *
+     * @param isTop true=上半球天穹，纹理取上半部分 v∈[0, 0.5]
+     */
+    private GpuBuffer buildCelestialSphereDome(boolean isTop) {
+        VertexFormat format = DefaultVertexFormat.POSITION_TEX_COLOR;
+        int cells = DOME_STACKS * DOME_SLICES;
+        int vertexCount = cells * 6; // 每格 2 个三角形 = 6 顶点
+        int white = ARGB.color(255, 255, 255, 255);
+
+        float vScale = 0.5F;
+        float vBase = isTop ? 0.0F : 1.0F; // 上半球从顶部(0)到中部(0.5)，下半球从底部(1.0)到中部(0.5)
+        float vSign = isTop ? 1.0F : -1.0F; // 下半球 V 反向：天底→底部，地平线→中部
+
+        try (ByteBufferBuilder bb = ByteBufferBuilder.exactlySized(vertexCount * format.getVertexSize())) {
+            BufferBuilder buf = new BufferBuilder(bb, VertexFormat.Mode.TRIANGLES, format);
+
+            for (int i = 0; i < DOME_STACKS; i++) {
+                float theta1 = i * (float)(Math.PI / 2) / DOME_STACKS;
+                float theta2 = (i + 1) * (float)(Math.PI / 2) / DOME_STACKS;
+
+                float y1 = DOME_RADIUS * Mth.cos(theta1);
+                float y2 = DOME_RADIUS * Mth.cos(theta2);
+                float r1 = DOME_RADIUS * Mth.sin(theta1);
+                float r2 = DOME_RADIUS * Mth.sin(theta2);
+
+                float v1 = vBase + vSign * theta1 / (float)(Math.PI / 2) * vScale;
+                float v2 = vBase + vSign * theta2 / (float)(Math.PI / 2) * vScale;
+
+                for (int j = 0; j < DOME_SLICES; j++) {
+                    float phi1 = j * (float)(2 * Math.PI) / DOME_SLICES;
+                    float phi2 = (j + 1) * (float)(2 * Math.PI) / DOME_SLICES;
+
+                    float c1 = Mth.cos(phi1), s1 = Mth.sin(phi1);
+                    float c2 = Mth.cos(phi2), s2 = Mth.sin(phi2);
+                    float u1 = phi1 / (float)(2 * Math.PI);
+                    float u2 = phi2 / (float)(2 * Math.PI);
+
+                    float sy1 = isTop ? y1 : -y1;
+                    float sy2 = isTop ? y2 : -y2;
+
+                    // 4 个角点
+                    float ulX = r1 * c1, ulY = sy1, ulZ = r1 * s1; // 天顶/天底侧
+                    float llX = r2 * c1, llY = sy2, llZ = r2 * s1; // 地平线侧
+                    float lrX = r2 * c2, lrY = sy2, lrZ = r2 * s2;
+                    float urX = r1 * c2, urY = sy1, urZ = r1 * s2;
+
+                    if (isTop) {
+                        // 上半球：Y 正方向，ul/ur 在上，ll/lr 在下
+                        // T1: 上左→下左→下右（逆时针）
+                        buf.addVertex(ulX, ulY, ulZ).setUv(u1, v1).setColor(white);
+                        buf.addVertex(llX, llY, llZ).setUv(u1, v2).setColor(white);
+                        buf.addVertex(lrX, lrY, lrZ).setUv(u2, v2).setColor(white);
+                        // T2: 上左→下右→上右（逆时针）
+                        buf.addVertex(ulX, ulY, ulZ).setUv(u1, v1).setColor(white);
+                        buf.addVertex(lrX, lrY, lrZ).setUv(u2, v2).setColor(white);
+                        buf.addVertex(urX, urY, urZ).setUv(u2, v1).setColor(white);
+                    } else {
+                        // 下半球：Y 负方向（ul/ur 更负=屏幕更低），需反转绕组
+                        // T1: 下左→上左→上右（逆时针，从球内看）
+                        buf.addVertex(llX, llY, llZ).setUv(u1, v2).setColor(white);
+                        buf.addVertex(ulX, ulY, ulZ).setUv(u1, v1).setColor(white);
+                        buf.addVertex(urX, urY, urZ).setUv(u2, v1).setColor(white);
+                        // T2: 下左→上右→下右（逆时针，从球内看）
+                        buf.addVertex(llX, llY, llZ).setUv(u1, v2).setColor(white);
+                        buf.addVertex(urX, urY, urZ).setUv(u2, v1).setColor(white);
+                        buf.addVertex(lrX, lrY, lrZ).setUv(u2, v2).setColor(white);
+                    }
+                }
+            }
+
+            try (MeshData mesh = buf.buildOrThrow()) {
+                String label = isTop ? "Top celestial dome" : "Bottom celestial dome";
+                ReadStar.LOGGER.info("Built {} (triangles): {} cells, {} vertices", label, cells, vertexCount);
+                return RenderSystem.getDevice().createBuffer(() -> label, 32, mesh.vertexBuffer());
+            }
+        }
+    }
+
     private static GpuBuffer buildEndSky() {
         GpuBuffer var10;
         try (ByteBufferBuilder byteBufferBuilder = ByteBufferBuilder
@@ -442,23 +537,95 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         return var10;
     }
 
-    public void renderSkyDisc(int skyColor) {
+    /** 银道坐标系 → 赤道坐标系 (J2000) 预旋转。
+     *  天球纹理以银心为中心、银道面为赤道，需先旋转到赤道系再叠加 observer 旋转。 */
+    private static final Quaternionf GALACTIC_TO_EQUATORIAL = buildGalacticToEquatorial();
+
+    private static Quaternionf buildGalacticToEquatorial() {
+        // 北银极在赤道系 (J2000): RA=192.85948°, Dec=+27.12825°
+        float ngpRA = (float) Math.toRadians(192.85948);
+        float ngpDec = (float) Math.toRadians(27.12825);
+        Vector3f ngp = new Vector3f(
+                (float)(Math.cos(ngpDec) * Math.cos(ngpRA)),
+                (float) Math.sin(ngpDec),
+                (float)(Math.cos(ngpDec) * Math.sin(ngpRA)));
+
+        // 银心在赤道系 (J2000): RA=266.4051°, Dec=-28.9362°
+        float gcRA = (float) Math.toRadians(266.4051);
+        float gcDec = (float) Math.toRadians(-28.9362);
+        Vector3f gc = new Vector3f(
+                (float)(Math.cos(gcDec) * Math.cos(gcRA)),
+                (float) Math.sin(gcDec),
+                (float)(Math.cos(gcDec) * Math.sin(gcRA)));
+
+        // 银道坐标系正交基在赤道系中的表示
+        // 天穹本地：X(-1,0,0)=银心方向, Y(0,1,0)=北银极, Z(0,0,1)=Y×X
+        // R × v_local = v_equatorial → 列向量为基向量在赤道系的坐标
+        Vector3f zGal = new Vector3f(ngp).cross(gc).normalize(); // Z = NGP × GC（正交补全）
+
+        // R = [ -gc | ngp | zGal ]  （因为 X_local=(-1,0,0) → R×(-1,0,0) = gc → col0 = -gc）
+        Matrix3f rot = new Matrix3f();
+        rot.setColumn(0, new Vector3f(-gc.x, -gc.y, -gc.z));
+        rot.setColumn(1, new Vector3f(ngp));
+        rot.setColumn(2, zGal);
+
+        return rot.getUnnormalizedRotation(new Quaternionf());
+    }
+
+    /**
+     * 渲染完整天球图，银道→赤道预旋转 + observer 天球坐标系旋转（仅旋转，不平移）。
+     */
+    public void renderSkyDisc(int skyColor, CelestialBody observer) {
+        PoseStack poseStack = new PoseStack();
+        // mulPose 是后乘：v' = M1 × M2 × v，即先 M2 后 M1
+        // 1. observer 天球坐标系旋转（第二步：赤道→世界）
+        if (observer != null) {
+            Quaternionf frameQuat = observer.getLocalToWorldQuaternion();
+            poseStack.mulPose(frameQuat);
+        }
+        // 2. 银道→赤道预旋转（第一步：顶点从银道→赤道）
+        poseStack.mulPose(GALACTIC_TO_EQUATORIAL);
+
+        Matrix4fStack modelViewStack = RenderSystem.getModelViewStack();
+        modelViewStack.pushMatrix();
+        modelViewStack.mul(poseStack.last().pose());
         GpuBufferSlice dynamicTransforms = RenderSystem.getDynamicUniforms()
-                .writeTransform(RenderSystem.getModelViewMatrix(), ARGB.vector4fFromARGB32(skyColor), new Vector3f(),
-                        new Matrix4f());
+                .writeTransform(modelViewStack,
+                        new Vector4f(1.0F, 1.0F, 1.0F, 1.0F),
+                        new Vector3f(), new Matrix4f());
         GpuTextureView colorTexture = Minecraft.getInstance().getMainRenderTarget().getColorTextureView();
         GpuTextureView depthTexture = Minecraft.getInstance().getMainRenderTarget().getDepthTextureView();
+        int vertexCount = DOME_STACKS * DOME_SLICES * 6;
 
+        // 上半球天穹
         try (RenderPass renderPass = RenderSystem.getDevice()
                 .createCommandEncoder()
-                .createRenderPass(() -> "Sky disc", colorTexture, OptionalInt.empty(), depthTexture,
+                .createRenderPass(() -> "Sky celestial top", colorTexture, OptionalInt.empty(), depthTexture,
                         OptionalDouble.empty())) {
-            renderPass.setPipeline(RenderPipelines.SKY);
+            renderPass.setPipeline(ReadstarRenderPipelines.CELESTIAL_SPHERE);
             RenderSystem.bindDefaultUniforms(renderPass);
             renderPass.setUniform("DynamicTransforms", dynamicTransforms);
-            renderPass.setVertexBuffer(0, this.topSkyBuffer);
-            renderPass.draw(0, 10);
+            renderPass.bindTexture("Sampler0", this.celestialSphereTexture.getTextureView(),
+                    this.celestialSphereTexture.getSampler());
+            renderPass.setVertexBuffer(0, this.topCelestialSphereBuffer);
+            renderPass.draw(0, vertexCount);
         }
+
+        // 下半球天穹
+        try (RenderPass renderPass = RenderSystem.getDevice()
+                .createCommandEncoder()
+                .createRenderPass(() -> "Sky celestial bottom", colorTexture, OptionalInt.empty(), depthTexture,
+                        OptionalDouble.empty())) {
+            renderPass.setPipeline(ReadstarRenderPipelines.CELESTIAL_SPHERE);
+            RenderSystem.bindDefaultUniforms(renderPass);
+            renderPass.setUniform("DynamicTransforms", dynamicTransforms);
+            renderPass.bindTexture("Sampler0", this.celestialSphereTexture.getTextureView(),
+                    this.celestialSphereTexture.getSampler());
+            renderPass.setVertexBuffer(0, this.bottomCelestialSphereBuffer);
+            renderPass.draw(0, vertexCount);
+        }
+
+        modelViewStack.popMatrix();
     }
 
     public void extractRenderState(ClientLevel level, float partialTicks, Camera camera, SkyRenderState state) {
@@ -1237,6 +1404,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         if (mc.player == null || mc.options.hideGui) return;
         if (!mc.player.isScoping()) return; // 仅在使用望远镜时显示
         if (observer == null) return;
+        if (stars == null || stars.isEmpty()) return; // 星表尚未加载
 
         // 获取玩家视线方向（世界坐标）→ 逆变换到天体局部坐标
         Vec3 worldLook = mc.player.getViewVector(1.0f);
@@ -1327,6 +1495,8 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         this.starBuffer.close();
         this.topSkyBuffer.close();
         this.bottomSkyBuffer.close();
+        this.topCelestialSphereBuffer.close();
+        this.bottomCelestialSphereBuffer.close();
         this.endSkyBuffer.close();
         this.sunriseBuffer.close();
         this.endFlashBuffer.close();

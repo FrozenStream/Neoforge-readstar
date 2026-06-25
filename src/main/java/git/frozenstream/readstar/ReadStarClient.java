@@ -223,7 +223,7 @@ public class ReadStarClient {
     static void onRenderGui(RenderGuiEvent.Post event) {
         var renderer = skyboxRenderer.getSkyRenderer();
         if (renderer != null) {
-            renderer.renderHud(event.getGuiGraphics(), skyboxRenderer.getObserver(), skyboxRenderer.stars);
+            renderer.renderHud(event.getGuiGraphics(), skyboxRenderer.getObserver(), skyboxRenderer.brightstars);
         }
     }
 }
