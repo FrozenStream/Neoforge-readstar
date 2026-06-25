@@ -42,8 +42,4 @@ repo/
 
 /net
 /data
-/.data/__pycache__
-/.data/.venv
-/.data/nul
-/.data/gaia_bright_with_teff_10.vot
-/.data/gaia_bright_with_teff.vot
+/.data
