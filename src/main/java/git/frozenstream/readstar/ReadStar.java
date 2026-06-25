@@ -9,6 +9,7 @@ import com.mojang.logging.LogUtils;
 
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
+import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
@@ -148,11 +149,11 @@ public class ReadStar {
     public void onPlayerLogin(PlayerEvent.PlayerLoggedInEvent event) {
         var player = event.getEntity();
         if (player instanceof ServerPlayer serverPlayer) {
-            // 向刚登录的玩家发送个人欢迎消息
+            // 向刚登录的玩家发送个人欢迎消息（可本地化）
             NetworkHelper.sendMessageToPlayer(
                     serverPlayer,
-                    "你好 %s！感谢使用 Read Star 模组。",
-                    serverPlayer.getName().getString()
+                    Component.translatable("message.readstar.welcome",
+                            serverPlayer.getName().getString())
             );
             
             // 发送行星系统数据给新登录的玩家

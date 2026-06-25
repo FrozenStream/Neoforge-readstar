@@ -1304,11 +1304,11 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         int screenY = (int) (cy - vAngle / (vFovRad / 2f) * cy);
 
         // 在星星上方绘制 tooltip，避免遮挡
-        String tip = String.format("%s  %.1f", nearestStar.name, nearestStar.vmag);
-        int textW = font.width(tip);
+        Component tip = Component.translatable("hud.readstar.star_tooltip",
+                nearestStar.name, nearestStar.vmag);
+        int textW = font.width(tip.getString());
         int tipY = screenY - font.lineHeight - 5; // 星星上方
-        g.textWithBackdrop(font, Component.literal(tip),
-                screenX - textW / 2, tipY, textW, brightColor);
+        g.textWithBackdrop(font, tip, screenX - textW / 2, tipY, textW, brightColor);
     }
 
     @Override

@@ -203,25 +203,18 @@ public class ReadStarClient {
     @SubscribeEvent
     static void onRegisterClientCommands(RegisterClientCommandsEvent event) {
         event.getDispatcher().register(
-            Commands.literal("readstar")
-                .then(Commands.literal("skybox")
-                    .then(Commands.literal("vmag")
+                Commands.literal("readstar").then(Commands.literal("vmag")
                         .then(Commands.argument("value", FloatArgumentType.floatArg(0.0f, 10.0f))
-                            .executes(ctx -> {
-                                float vmag = FloatArgumentType.getFloat(ctx, "value");
+                                .executes(ctx -> {
+                                    float vmag = FloatArgumentType.getFloat(ctx, "value");
                                     skyboxRenderer.rebuildStarswithVmag(vmag);
                                     ctx.getSource().sendSuccess(
-                                        () -> Component.literal(
-                                            "§a已按 Vmag ≤ " + String.format("%.1f", vmag)
-                                            + " 重建星星缓冲（当前阈值: " + String.format("%.1f", vmag) + "）"),
-                                        false
-                                    );
-                                return 1;
-                            })
-                        )
-                    )
-                )
-        );
+                                            () -> Component.translatable(
+                                                    "command.readstar.vmag.success",
+                                                    vmag, vmag),
+                                            false);
+                                    return 1;
+                                }))));
     }
 
     /**
