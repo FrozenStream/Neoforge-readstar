@@ -608,10 +608,6 @@ public class ReadstarSkyRenderer implements AutoCloseable {
 
         // ===== 在天球框架内各自指向世界坐标方向 =====
         if (hasFrame && observerPos != null) {
-            // 提取 observer 大气属性，消除后续 null 警告
-            final boolean obsHasAtm = observer.hasAtmosphere;
-            final int obsAtmHSV = observer.atmosphereHSV;
-
             // ---- ALL CELESTIAL BODIES（统一渲染 luminous + non-luminous） ----
             for (CelestialBody body : manager.getCelestialBodyTreeMap()) {
                 if (body == observer) continue;
@@ -620,6 +616,8 @@ public class ReadstarSkyRenderer implements AutoCloseable {
                 Vector3f toWorld = new Vector3f(body.position).sub(observerPos);
                 if (toWorld.lengthSquared() <= 0.0001f) continue;
                 toWorld.normalize();
+
+                ReadStar.LOGGER.debug("toWorld of {}: {}", body.name, toWorld.toString());
 
                 GpuBuffer buffer;
                 MoonPhase phase;
@@ -637,8 +635,8 @@ public class ReadstarSkyRenderer implements AutoCloseable {
                     poseStack.mulPose(new Quaternionf().rotateTo(new Vector3f(0, 1, 0), toWorld));
 
                     // 发光体 + 观测者大气 → 渲染光晕
-                    if (body.luminance > 0 && obsHasAtm && obsAtmHSV != 0) {
-                        int glowHSV = CelestialBody.computeGlowColor(body.starHSV, obsAtmHSV);
+                    if (body.luminance > 0 && observer.hasAtmosphere && observer.atmosphereHSV != 0) {
+                        int glowHSV = CelestialBody.computeGlowColor(body.starHSV, observer.atmosphereHSV);
                         renderGlow(glowHSV, size * 3f, rainBrightness, poseStack);
                     }
 
@@ -765,7 +763,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
                     GpuTextureView depthTexture = this.renderTarget.getDepthTextureView();
                     GpuBuffer indexBuffer = this.quadIndices.getBuffer(totalIndices);
                     GpuBufferSlice dynamicTransforms = RenderSystem.getDynamicUniforms()
-                        .writeTransform(modelViewStack, new Vector4f(0.6f, 0.6f, 0.01f, starBrightness * 0.7f), new Vector3f(), new Matrix4f());
+                        .writeTransform(new Matrix4f(modelViewStack), new Vector4f(0.6f, 0.6f, 0.01f, starBrightness * 0.7f), new Vector3f(), new Matrix4f());
 
                     try (RenderPass renderPass = RenderSystem.getDevice()
                             .createCommandEncoder()
@@ -801,16 +799,14 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         modelViewStack.mul(poseStack.last().pose());
         modelViewStack.translate(0.0F, 100.0F, 0.0F);
         modelViewStack.scale(size, -1.0F, size);
-        GpuBufferSlice dynamicTransforms = RenderSystem.getDynamicUniforms()
-                .writeTransform(modelViewStack, new Vector4f(1.0F, 1.0F, 1.0F, rainBrightness), new Vector3f(),
-                        new Matrix4f());
+        
+        // 使用矩阵副本避免 DynamicUniforms 延迟读取时 modelViewStack 已被后续天体修改
+        GpuBufferSlice dynamicTransforms = RenderSystem.getDynamicUniforms().writeTransform(new Matrix4f(modelViewStack), new Vector4f(1.0F, 1.0F, 1.0F, rainBrightness));
         GpuTextureView color = this.renderTarget.getColorTextureView();
         GpuTextureView depth = this.renderTarget.getDepthTextureView();
         GpuBuffer indexBuffer = this.quadIndices.getBuffer(6);
 
-        try (RenderPass renderPass = RenderSystem.getDevice()
-                .createCommandEncoder()
-                .createRenderPass(() -> "Sky " + name, color, Optional.empty(), depth, OptionalDouble.empty())) {
+        try (RenderPass renderPass = RenderSystem.getDevice().createCommandEncoder().createRenderPass(() -> "Sky " + name, color, Optional.empty(), depth, OptionalDouble.empty())) {
             renderPass.setPipeline(RenderPipelines.CELESTIAL);
             RenderSystem.bindDefaultUniforms(renderPass);
             renderPass.setUniform("DynamicTransforms", dynamicTransforms);
@@ -848,7 +844,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         modelViewStack.translate(0.0F, 100.0F, 0.0F);
         modelViewStack.scale(size, -1.0F, size);
         GpuBufferSlice dynamicTransforms = RenderSystem.getDynamicUniforms()
-                .writeTransform(modelViewStack, new Vector4f(rgb[0], rgb[1], rgb[2], alpha), new Vector3f(),
+                .writeTransform(new Matrix4f(modelViewStack), new Vector4f(rgb[0], rgb[1], rgb[2], alpha), new Vector3f(),
                         new Matrix4f());
         GpuTextureView color = this.renderTarget.getColorTextureView();
         GpuTextureView depth = this.renderTarget.getDepthTextureView();
@@ -1065,7 +1061,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         modelViewStack.pushMatrix();
         modelViewStack.mul(poseStack.last().pose());
         GpuBufferSlice dynamicTransforms = RenderSystem.getDynamicUniforms()
-                .writeTransform(modelViewStack,
+                .writeTransform(new Matrix4f(modelViewStack),
                         new Vector4f(1, 1, 1, 1),
                         new Vector3f(), new Matrix4f());
         GpuTextureView color = this.renderTarget.getColorTextureView();
@@ -1115,7 +1111,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         Matrix4f texMat = new Matrix4f();
         texMat.m00(fovCompensation);
         GpuBufferSlice dynamicTransforms = RenderSystem.getDynamicUniforms()
-                .writeTransform(modelViewStack,
+                .writeTransform(new Matrix4f(modelViewStack),
                         new Vector4f(starBrightness, starBrightness, starBrightness, starBrightness), new Vector3f(),
                         texMat);
 
@@ -1147,7 +1143,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
             modelViewStack.mul(poseStack.last().pose());
             modelViewStack.scale(1.0F, 1.0F, alpha);
             GpuBufferSlice dynamicTransforms = RenderSystem.getDynamicUniforms()
-                    .writeTransform(modelViewStack, ARGB.vector4fFromARGB32(sunriseAndSunsetColor), new Vector3f(),
+                    .writeTransform(new Matrix4f(modelViewStack), ARGB.vector4fFromARGB32(sunriseAndSunsetColor), new Vector3f(),
                             new Matrix4f());
             GpuTextureView color = this.renderTarget.getColorTextureView();
             GpuTextureView depth = this.renderTarget.getDepthTextureView();
@@ -1199,7 +1195,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         modelViewStack.mul(poseStack.last().pose());
         modelViewStack.scale(60.0F, 1.0F, 60.0F);
         GpuBufferSlice dynamicTransforms = RenderSystem.getDynamicUniforms()
-                .writeTransform(modelViewStack, new Vector4f(intensity, intensity, intensity, intensity),
+                .writeTransform(new Matrix4f(modelViewStack), new Vector4f(intensity, intensity, intensity, intensity),
                         new Vector3f(), new Matrix4f());
         GpuTextureView color = this.renderTarget.getColorTextureView();
         GpuTextureView depth = this.renderTarget.getDepthTextureView();

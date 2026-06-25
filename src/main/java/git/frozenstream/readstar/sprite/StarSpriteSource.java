@@ -10,6 +10,7 @@ import net.minecraft.client.renderer.texture.atlas.SpriteSource;
 import net.minecraft.client.renderer.texture.SpriteContents;
 import net.minecraft.client.resources.metadata.animation.FrameSize;
 import net.minecraft.resources.Identifier;
+import net.minecraft.server.packs.resources.Resource;
 import net.minecraft.server.packs.resources.ResourceManager;
 
 import java.io.InputStream;
@@ -107,7 +108,7 @@ public record StarSpriteSource() implements SpriteSource {
         }
 
         Set<Integer> colors = new HashSet<>();
-        for (Map.Entry<Identifier, net.minecraft.server.packs.resources.Resource> entry : starResources.entrySet()) {
+        for (Map.Entry<Identifier, Resource> entry : starResources.entrySet()) {
             Identifier resPath = entry.getKey();
             try (InputStreamReader reader = new InputStreamReader(entry.getValue().open(), StandardCharsets.UTF_8)) {
                 JsonArray arr = JsonParser.parseReader(reader).getAsJsonObject().getAsJsonArray("Stars");
@@ -117,7 +118,8 @@ public record StarSpriteSource() implements SpriteSource {
                 }
                 for (int i = 0; i < arr.size(); i++) {
                     JsonObject o = arr.get(i).getAsJsonObject();
-                    if (o.has("color")) colors.add(o.get("color").getAsInt());
+                    // 离散化到感知均匀调色板（每通道10值，总计≤1000色）
+                    if (o.has("color")) colors.add(ColorDiscretizer.discretize(o.get("color").getAsInt()));
                 }
             } catch (Exception e) {
                 ReadStar.LOGGER.error("Failed to read star data from {}", resPath, e);

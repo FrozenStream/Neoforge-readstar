@@ -6,6 +6,7 @@ import com.google.gson.JsonParser;
 import com.mojang.blaze3d.vertex.*;
 import git.frozenstream.readstar.ReadStar;
 import git.frozenstream.readstar.elements.CelestialBody;
+import git.frozenstream.readstar.sprite.ColorDiscretizer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.state.level.LevelRenderState;
 import net.minecraft.client.renderer.state.level.SkyRenderState;
@@ -90,7 +91,7 @@ public class ReadstarSkyboxRenderer implements CustomSkyboxRenderer, ResourceMan
                     float pz = pos.get(2).getAsFloat();
                     String name = obj.get("name").getAsString();
                     float vmag = obj.get("Vmag").getAsFloat();
-                    int color = obj.get("color").getAsInt();
+                    int color = ColorDiscretizer.discretize(obj.get("color").getAsInt());
                     if (vmag > maxVmag)
                         continue;
                     result.add(new ReadstarSkyRenderer.Star(name, new Vector3f(px, py, pz).normalize(), vmag, color));
