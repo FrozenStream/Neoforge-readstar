@@ -8,7 +8,6 @@ import git.frozenstream.readstar.elements.CelestialBodyManager;
 import git.frozenstream.readstar.elements.CelestialBody;
 import git.frozenstream.readstar.elements.MeteorCollector;
 import git.frozenstream.readstar.skybox.ReadstarSkyboxRenderer;
-import git.frozenstream.readstar.skybox.ReadstarSkyRenderer;
 import git.frozenstream.readstar.sprite.CelestialSpriteSourceProvider;
 import git.frozenstream.readstar.sprite.MoonSpriteSource;
 import git.frozenstream.readstar.sprite.StarSpriteSource;
@@ -209,21 +208,14 @@ public class ReadStarClient {
                                         .then(Commands.argument("value", FloatArgumentType.floatArg(0.0f, 10.0f))
                                                 .executes(ctx -> {
                                                     float vmag = FloatArgumentType.getFloat(ctx, "value");
-                                                    ReadstarSkyRenderer renderer = skyboxRenderer.getSkyRenderer();
-                                                    if (renderer != null) {
-                                                        renderer.rebuildStarBuffer(vmag);
+                                                        skyboxRenderer.rebuildStarswithVmag(vmag);
                                                         ctx.getSource().sendSuccess(
                                                                 () -> Component.literal(
                                                                         "§a已按 Vmag ≤ " + String.format("%.1f", vmag)
                                                                                 + " 重建星星缓冲（当前阈值: "
-                                                                                + String.format("%.1f",
-                                                                                        renderer.getMaxVmag())
+                                                                                + String.format("%.1f", vmag)
                                                                                 + "）"),
                                                                 false);
-                                                    } else {
-                                                        ctx.getSource().sendFailure(
-                                                                Component.literal("§c天空渲染器未初始化，请等待资源加载完成"));
-                                                    }
                                                     return 1;
                                                 })))));
     }
@@ -235,7 +227,7 @@ public class ReadStarClient {
     static void onRenderGui(RenderGuiEvent.Post event) {
         var renderer = skyboxRenderer.getSkyRenderer();
         if (renderer != null) {
-            renderer.renderHud(event.getGuiGraphics(), skyboxRenderer.getObserver());
+            renderer.renderHud(event.getGuiGraphics(), skyboxRenderer.getObserver(), skyboxRenderer.stars);
         }
     }
 }

@@ -1,15 +1,28 @@
 package git.frozenstream.readstar.skybox;
 
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.mojang.blaze3d.vertex.*;
+import git.frozenstream.readstar.ReadStar;
 import git.frozenstream.readstar.elements.CelestialBody;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.state.level.LevelRenderState;
 import net.minecraft.client.renderer.state.level.SkyRenderState;
+import net.minecraft.resources.Identifier;
+import net.minecraft.server.packs.resources.Resource;
 import net.minecraft.server.packs.resources.ResourceManager;
 import net.minecraft.server.packs.resources.ResourceManagerReloadListener;
 import net.minecraft.world.level.dimension.DimensionType;
 import net.neoforged.neoforge.client.CustomSkyboxRenderer;
 import org.joml.Matrix4fc;
+import org.joml.Vector3f;
+
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 
 
 public class ReadstarSkyboxRenderer implements CustomSkyboxRenderer, ResourceManagerReloadListener {
@@ -21,6 +34,7 @@ public class ReadstarSkyboxRenderer implements CustomSkyboxRenderer, ResourceMan
 
     private ReadstarSkyRenderer skyRenderer = null;
     private CelestialBody observer;
+    public List<ReadstarSkyRenderer.Star> stars;
 
     private ReadstarSkyboxRenderer() {}
 
@@ -38,7 +52,63 @@ public class ReadstarSkyboxRenderer implements CustomSkyboxRenderer, ResourceMan
             this.skyRenderer.close();
         }
 
-        this.skyRenderer = new ReadstarSkyRenderer(Minecraft.getInstance().getTextureManager(), Minecraft.getInstance().getAtlasManager(), resourceManager);
+        this.stars = parseStars(resourceManager, 6.5f);
+        Minecraft minecraft = Minecraft.getInstance();
+        this.skyRenderer = new ReadstarSkyRenderer(minecraft.getTextureManager(), minecraft.getAtlasManager());
+        this.skyRenderer.buildStarsBuffer(this.stars);
+    }
+
+    /**
+     * 扫描 stars/ 目录下所有 .json 文件，合并解析星表数据，返回不可变列表。
+     */
+    private static List<ReadstarSkyRenderer.Star> parseStars(ResourceManager resourceManager, float maxVmag) {
+        List<ReadstarSkyRenderer.Star> result = new ArrayList<>();
+
+        Map<Identifier, Resource> starResources = resourceManager.listResources(
+                "stars", id -> id.getPath().endsWith(".json"));
+
+        if (starResources.isEmpty()) {
+            ReadStar.LOGGER.warn("No star data files found in stars/");
+            return List.of();
+        }
+
+        for (Map.Entry<Identifier, Resource> entry : starResources.entrySet()) {
+            Identifier resPath = entry.getKey();
+            try (InputStreamReader reader = new InputStreamReader(entry.getValue().open(),
+                    StandardCharsets.UTF_8)) {
+                JsonArray starsArray = JsonParser.parseReader(reader).getAsJsonObject().getAsJsonArray("Stars");
+                if (starsArray == null) {
+                    ReadStar.LOGGER.warn("No 'Stars' array in: {}", resPath);
+                    continue;
+                }
+                int before = result.size();
+                for (int i = 0; i < starsArray.size(); i++) {
+                    JsonObject obj = starsArray.get(i).getAsJsonObject();
+                    JsonArray pos = obj.getAsJsonArray("position");
+                    float px = pos.get(0).getAsFloat();
+                    float py = pos.get(1).getAsFloat();
+                    float pz = pos.get(2).getAsFloat();
+                    String name = obj.get("name").getAsString();
+                    float vmag = obj.get("Vmag").getAsFloat();
+                    int color = obj.get("color").getAsInt();
+                    if (vmag > maxVmag)
+                        continue;
+                    result.add(new ReadstarSkyRenderer.Star(name, new Vector3f(px, py, pz).normalize(), vmag, color));
+                }
+                ReadStar.LOGGER.info("Parsed {} stars from {}", result.size() - before, resPath);
+            } catch (Exception e) {
+                ReadStar.LOGGER.error("Failed to load star data from {}: {}", resPath, e.getMessage());
+            }
+        }
+
+        ReadStar.LOGGER.info("Total parsed {} stars from {} file(s)", result.size(), starResources.size());
+        return List.copyOf(result);
+    }
+
+
+    public void rebuildStarswithVmag(float vmag) {
+        this.stars = parseStars(Minecraft.getInstance().getResourceManager(), vmag);
+        this.skyRenderer.buildStarsBuffer(this.stars);
     }
 
     @Override
