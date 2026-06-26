@@ -50,6 +50,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalDouble;
+import java.util.OptionalInt;
 
 
 public class ReadstarSkyRenderer implements AutoCloseable {
@@ -570,7 +571,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
     /**
      * 渲染完整天球图，银道→赤道预旋转 + observer 天球坐标系旋转（仅旋转，不平移）。
      */
-    public void renderSkyDisc(int skyColor, CelestialBody observer) {
+    public void renderCosmicBackground(int skyColor, CelestialBody observer, float starBrightness) {
         PoseStack poseStack = new PoseStack();
         // mulPose 是后乘：v' = M1 × M2 × v，即先 M2 后 M1
         // 1. observer 天球坐标系旋转（第二步：赤道→世界）
@@ -586,7 +587,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         modelViewStack.mul(poseStack.last().pose());
         GpuBufferSlice dynamicTransforms = RenderSystem.getDynamicUniforms()
                 .writeTransform(new Matrix4f(modelViewStack),
-                        new Vector4f(0.2F, 0.2F, 0.2F, 1.0F),
+                        new Vector4f(0.2F, 0.2F, 0.2F, starBrightness),
                         new Vector3f(), new Matrix4f());
         GpuTextureView colorTexture = this.renderTarget.getColorTextureView();
         GpuTextureView depthTexture = this.renderTarget.getDepthTextureView();
@@ -623,6 +624,25 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         modelViewStack.popMatrix();
     }
 
+    public void renderSkyDisc(int skyColor) {
+        GpuBufferSlice dynamicTransforms = RenderSystem.getDynamicUniforms()
+                .writeTransform(RenderSystem.getModelViewMatrix(), ARGB.vector4fFromARGB32(skyColor), new Vector3f(),
+                        new Matrix4f());
+        GpuTextureView colorTexture = Minecraft.getInstance().getMainRenderTarget().getColorTextureView();
+        GpuTextureView depthTexture = Minecraft.getInstance().getMainRenderTarget().getDepthTextureView();
+
+        try (RenderPass renderPass = RenderSystem.getDevice()
+                .createCommandEncoder()
+                .createRenderPass(() -> "Sky disc", colorTexture, OptionalInt.empty(), depthTexture,
+                        OptionalDouble.empty())) {
+            renderPass.setPipeline(RenderPipelines.SKY);
+            RenderSystem.bindDefaultUniforms(renderPass);
+            renderPass.setUniform("DynamicTransforms", dynamicTransforms);
+            renderPass.setVertexBuffer(0, this.topSkyBuffer);
+            renderPass.draw(0, 10);
+        }
+    }
+
     public void extractRenderState(ClientLevel level, float partialTicks, Camera camera, SkyRenderState state) {
         state.skybox = level.dimensionType().skybox();
         if (state.skybox != DimensionType.Skybox.NONE) {
@@ -651,7 +671,6 @@ public class ReadstarSkyRenderer implements AutoCloseable {
             }
         }
     }
-
 
     private boolean shouldRenderDarkDisc(float deltaPartialTick, ClientLevel level) {
         return Minecraft.getInstance().player.getEyePosition(deltaPartialTick).y
