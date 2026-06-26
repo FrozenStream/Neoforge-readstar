@@ -50,7 +50,7 @@ public class ReadstarRenderPipelines {
     /** 大气叠加管线：POSITION + TRANSLUCENT，全天空半透明叠加大气散射色 */
     public static final RenderPipeline ATMOSPHERE_OVERLAY;
 
-    /** 天球图管线：POSITION_TEX，使用双半球天球图纹理替代原版纯色天空底色 */
+    /** 天球图管线：POSITION_TEX_COLOR + OVERLAY，使用双半球天球图纹理叠加到原版天空底色上 */
     public static final RenderPipeline CELESTIAL_SPHERE;
 
     static {
@@ -98,6 +98,7 @@ public class ReadstarRenderPipelines {
                 .withVertexShader(Identifier.fromNamespaceAndPath("minecraft", "core/position_tex_color"))
                 .withFragmentShader(Identifier.fromNamespaceAndPath("minecraft", "core/position_tex_color"))
                 .withSampler("Sampler0")
+                .withColorTargetState(new ColorTargetState(BlendFunction.OVERLAY))
                 .withVertexFormat(DefaultVertexFormat.POSITION_TEX_COLOR, Mode.TRIANGLES)
                 .build();
     }
