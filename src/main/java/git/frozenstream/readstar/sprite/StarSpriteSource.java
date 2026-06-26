@@ -1,8 +1,5 @@
 package git.frozenstream.readstar.sprite;
 
-import com.google.gson.JsonArray;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
 import com.mojang.blaze3d.platform.NativeImage;
 import com.mojang.serialization.MapCodec;
 import git.frozenstream.readstar.ReadStar;
@@ -13,6 +10,7 @@ import net.minecraft.resources.Identifier;
 import net.minecraft.server.packs.resources.Resource;
 import net.minecraft.server.packs.resources.ResourceManager;
 
+import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
@@ -99,9 +97,9 @@ public record StarSpriteSource() implements SpriteSource {
             glowPatterns[i] = loadPattern(path, manager);
         }
 
-        // 扫描 stars/ 目录下所有 .json 文件
+        // 扫描 stars/ 目录下所有 .csv 文件
         Map<Identifier, net.minecraft.server.packs.resources.Resource> starResources =
-                manager.listResources("stars", id -> id.getPath().endsWith(".json"));
+                manager.listResources("stars", id -> id.getPath().endsWith(".csv"));
         if (starResources.isEmpty()) {
             ReadStar.LOGGER.warn("No star data files found in stars/");
             return;
@@ -110,16 +108,21 @@ public record StarSpriteSource() implements SpriteSource {
         Set<Integer> colors = new HashSet<>();
         for (Map.Entry<Identifier, Resource> entry : starResources.entrySet()) {
             Identifier resPath = entry.getKey();
-            try (InputStreamReader reader = new InputStreamReader(entry.getValue().open(), StandardCharsets.UTF_8)) {
-                JsonArray arr = JsonParser.parseReader(reader).getAsJsonObject().getAsJsonArray("Stars");
-                if (arr == null) {
-                    ReadStar.LOGGER.warn("No 'Stars' array in: {}", resPath);
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(entry.getValue().open(), StandardCharsets.UTF_8))) {
+                // 跳过CSV头部行
+                String header = reader.readLine();
+                if (header == null || !header.startsWith("name,")) {
+                    ReadStar.LOGGER.warn("Invalid CSV header in: {}", resPath);
                     continue;
                 }
-                for (int i = 0; i < arr.size(); i++) {
-                    JsonObject o = arr.get(i).getAsJsonObject();
-                    // 离散化到感知均匀调色板（每通道10值，总计≤1000色）
-                    if (o.has("color")) colors.add(ColorDiscretizer.discretize(o.get("color").getAsInt()));
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    line = line.trim();
+                    if (line.isEmpty()) continue;
+                    String[] parts = line.split(",");
+                    if (parts.length >= 6) {
+                        colors.add(Integer.parseUnsignedInt(parts[5]));
+                    }
                 }
             } catch (Exception e) {
                 ReadStar.LOGGER.error("Failed to read star data from {}", resPath, e);

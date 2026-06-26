@@ -19,7 +19,7 @@
   "planetdesc.readstar.mars": "火星是距离太阳第四近的行星，也是太阳系中第二小的行星。由于其表面氧化铁的存在，常被称为'红色星球'。",
   "planetdesc.readstar.moon": "月球是地球唯一的天然卫星。大约在45亿年前形成，很可能来源于一个火星大小的天体与早期地球碰撞所产生的碎片，是太阳系中第五大卫星。",
 
-  "command.readstar.vmag.success": "§a已按 Vmag ≤ %.1f 重建星星缓冲（当前阈值: %.1f）",
+  "command.readstar.mag.success": "§a已按 mag ≤ %.1f 重建星星缓冲（当前阈值: %.1f）",
   "command.readstar.message.all.success": "已向所有玩家发送消息: %s",
   "command.readstar.message.player.success": "已向玩家 %s 发送消息: %s",
   "message.readstar.server_prefix": "§6[服务器] §f%s",

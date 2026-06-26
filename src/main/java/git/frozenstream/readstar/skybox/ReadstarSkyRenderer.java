@@ -93,10 +93,10 @@ public class ReadstarSkyRenderer implements AutoCloseable {
      * 天球星表数据记录，存储从 stars.json 解析的原始星数据，可复用。
      * @param name      恒星名称（如 "Sirius", "Canopus"）
      * @param direction 天球上的单位方向向量（归一化）
-     * @param vmag      视星等（数值越小越亮）
+     * @param mag      视星等（数值越小越亮）
      * @param color     颜色索引（0-6，映射到 environment/stars/color_* 纹理）
      */
-    public record Star(String name, Vector3f direction, float vmag, int color) {}
+    public record Star(String name, Vector3f direction, float mag, int color) {}
 
     public ReadstarSkyRenderer(TextureManager textureManager, AtlasManager atlasManager, RenderTarget renderTarget) {
         this.celestialsAtlas = atlasManager.getAtlasOrThrow(ReadStarClient.CELESTIAL_ATLAS_INFO);
@@ -294,10 +294,10 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         int colorOffset = 20;
         int offsetOffset = 24;
 
-        // 预计光晕星数量（Vmag < 2.0 才有光晕）
+        // 预计光晕星数量（mag < 2.0 才有光晕）
         int glowStarCount = 0;
         for (Star star : stars) {
-            if (star.vmag < 2.0f)
+            if (star.mag < 2.0f)
                 glowStarCount++;
         }
         int totalQuads = starCount + glowStarCount;
@@ -321,21 +321,21 @@ public class ReadstarSkyRenderer implements AutoCloseable {
 
             for (Star star : stars) {
                 try {
-                    float vmag = star.vmag;
+                    float mag = star.mag;
                     int color = star.color;
 
                     // 球面位置（着色器内部计算 billboard 朝向）
                     Vector3f center = new Vector3f(star.direction).normalize(100.0F);
 
                     // 逐星亮度：普森(Pogson)星等-亮度公式 —— 人眼感知模型
-                    // Δ5mag = 100× 亮度比 → brightness ∝ 10^(-0.4 × vmag)
-                    // 以 vmag=1 为基准归一化，vmag<1 的亮星钳位不增亮
-                    float alphaF = (float) Math.pow(10.0, -0.08 * Math.max(vmag - 1.0, 0.0));
-                    float colorF = (float) Math.pow(10.0, -0.08 * Math.max(vmag - 1.0, 0.0));
+                    // Δ5mag = 100× 亮度比 → brightness ∝ 10^(-0.4 × mag)
+                    // 以 mag=1 为基准归一化，mag<1 的亮星钳位不增亮
+                    float alphaF = (float) Math.pow(10.0, -0.08 * Math.max(mag - 1.0, 0.0));
+                    float colorF = (float) Math.pow(10.0, -0.08 * Math.max(mag - 1.0, 0.0));
                     int starAlpha = Math.min(255, Math.max(1, (int) (alphaF * 255.0f)));
                     int starColor = Math.min(255, Math.max(1, (int) (colorF * 255.0f)));
                     // 星点视大小衰减指数取 -0.3（比亮度平缓），保证暗星仍有最小可见尺寸
-                    float sizeF = (float) Math.pow(10.0, -0.05 * Math.max(vmag - 2.0, 0.0));
+                    float sizeF = (float) Math.pow(10.0, -0.05 * Math.max(mag - 2.0, 0.0));
                     float starSize = Math.max(sizeF, 0.3f) * coreSize;
 
                     // ---- 核心 quad（所有星）：4 顶点共享 center，Offset 区分角落 ----
@@ -348,12 +348,12 @@ public class ReadstarSkyRenderer implements AutoCloseable {
                             starColor, starAlpha,
                             starSize);
 
-                    // ---- 光晕 quad（仅 Vmag < 2.0 的亮星） ----
-                    if (vmag < 2.0f) {
+                    // ---- 光晕 quad（仅 mag < 2.0 的亮星） ----
+                    if (mag < 2.0f) {
                         String glowLevel;
-                        if (vmag < 0.5f)
+                        if (mag < 0.5f)
                             glowLevel = "glow_high";
-                        else if (vmag < 1.5f)
+                        else if (mag < 1.5f)
                             glowLevel = "glow_med";
                         else
                             glowLevel = "glow_low";
@@ -1448,7 +1448,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
 
         // 在星星上方绘制 tooltip，避免遮挡
         Component tip = Component.translatable("hud.readstar.star_tooltip",
-                nearestStar.name, nearestStar.vmag);
+                nearestStar.name, nearestStar.mag);
         int textW = font.width(tip.getString());
         int tipY = screenY - font.lineHeight - 5; // 星星上方
         g.textWithBackdrop(font, tip, screenX - textW / 2, tipY, textW, brightColor);
