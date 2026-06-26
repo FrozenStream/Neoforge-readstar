@@ -427,7 +427,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         float vSign = isTop ? 1.0F : -1.0F; // 下半球 V 反向：天底→底部，地平线→中部
 
         try (ByteBufferBuilder bb = ByteBufferBuilder.exactlySized(vertexCount * format.getVertexSize())) {
-            BufferBuilder buf = new BufferBuilder(bb, VertexFormat.Mode.TRIANGLES, format);
+            BufferBuilder buf = new BufferBuilder(bb, PrimitiveTopology.TRIANGLES, format);
 
             for (int i = 0; i < DOME_STACKS; i++) {
                 float theta1 = i * (float)(Math.PI / 2) / DOME_STACKS;

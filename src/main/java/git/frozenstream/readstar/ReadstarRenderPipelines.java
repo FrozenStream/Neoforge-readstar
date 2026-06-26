@@ -97,12 +97,14 @@ public class ReadstarRenderPipelines {
                 .build();
 
         CELESTIAL_SPHERE = RenderPipeline
-                .builder(new RenderPipeline.Snippet[] { RenderPipelines.MATRICES_PROJECTION_SNIPPET })
+                .builder(RenderPipelines.GLOBALS_SNIPPET)
+                .withBindGroupLayout(BindGroupLayouts.MATRICES_PROJECTION)
                 .withLocation(Identifier.fromNamespaceAndPath(ReadStar.MODID, "pipeline/celestial_sphere"))
                 .withVertexShader(Identifier.fromNamespaceAndPath("minecraft", "core/position_tex_color"))
                 .withFragmentShader(Identifier.fromNamespaceAndPath("minecraft", "core/position_tex_color"))
-                .withSampler("Sampler0")
-                .withVertexFormat(DefaultVertexFormat.POSITION_TEX_COLOR, Mode.TRIANGLES)
+                .withBindGroupLayout(BindGroupLayouts.SAMPLER0)
+                .withVertexBinding(0, DefaultVertexFormat.POSITION_TEX_COLOR)
+                .withPrimitiveTopology(PrimitiveTopology.TRIANGLES)
                 .build();
     }
 

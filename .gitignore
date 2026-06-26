@@ -44,7 +44,5 @@ repo/
 /data
 /.data
 
-# Large star data files (use Git LFS or external storage)
-**/stars_gaia_numbered.json
-**/stars_gaia_numbered_10.json
+# Large star data files
 **/stars_merged_numbered.json
