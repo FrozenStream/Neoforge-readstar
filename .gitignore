@@ -43,3 +43,5 @@ repo/
 /net
 /data
 /.data
+
+**/stars_merged_numbered.json
