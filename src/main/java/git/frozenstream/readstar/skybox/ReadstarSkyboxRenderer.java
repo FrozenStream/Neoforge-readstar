@@ -139,8 +139,6 @@ public class ReadstarSkyboxRenderer implements CustomSkyboxRenderer, ResourceMan
             skyRenderer.renderCelestialAndStars(poseStack, state.rainBrightness, state.starBrightness, this.observer, levelRenderState.gameTime);
             // ===== METEORS (在 frameQuat 框架内渲染) =====
             skyRenderer.buildAndRenderMeteors(poseStack, state.starBrightness, levelRenderState.gameTime);
-            // 3. 大气散射叠加层（平滑衰减，夜晚自动透明）
-            skyRenderer.renderAtmosphereOverlay(this.observer, state.skyColor);
             if (state.shouldRenderDarkDisc) {
                 skyRenderer.renderDarkDisc();
             }

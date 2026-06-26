@@ -6,7 +6,7 @@ import org.lwjgl.system.MemoryUtil;
 
 import com.mojang.blaze3d.vertex.ByteBufferBuilder;
 
-public class StarBufferUtils {
+public class RenderUtils {
     /**
      * 向 ByteBufferBuilder 写入一颗星的 4 个顶点（QUAD）。
      * 所有顶点共享同一个 Position（球面中心），Offset（vec3，经 rotation 旋转后的 3D 偏移）区分四个角落。
@@ -60,5 +60,32 @@ public class StarBufferUtils {
         MemoryUtil.memPutFloat(ptr + offsetOff, ox);
         MemoryUtil.memPutFloat(ptr + offsetOff + 4, oy);
         MemoryUtil.memPutFloat(ptr + offsetOff + 8, oz);
+    }
+
+    /**
+     * HSV → RGB 转换。
+     * @param hue 色相 (0.0~1.0)
+     * @param saturation 饱和度 (0.0~1.0)
+     * @param value 明度 (0.0~1.0)
+     * @return float[3] {r, g, b}，各分量 0.0~1.0
+     */
+    public static float[] hsvToRgb(float hue, float saturation, float value) {
+        hue = hue % 1.0f;
+        if (hue < 0) hue += 1.0f;
+
+        int h = (int) (hue * 6);
+        float f = hue * 6 - h;
+        float p = value * (1 - saturation);
+        float q = value * (1 - f * saturation);
+        float t = value * (1 - (1 - f) * saturation);
+
+        return switch (h) {
+            case 0 -> new float[] { value, t, p };
+            case 1 -> new float[] { q, value, p };
+            case 2 -> new float[] { p, value, t };
+            case 3 -> new float[] { p, q, value };
+            case 4 -> new float[] { t, p, value };
+            default -> new float[] { value, p, q };
+        };
     }
 }
