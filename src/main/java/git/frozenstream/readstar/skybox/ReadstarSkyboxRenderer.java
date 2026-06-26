@@ -1,8 +1,5 @@
 package git.frozenstream.readstar.skybox;
 
-import com.google.gson.JsonArray;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
 import com.mojang.blaze3d.vertex.*;
 import git.frozenstream.readstar.ReadStar;
 import git.frozenstream.readstar.elements.CelestialBody;
@@ -18,6 +15,7 @@ import net.neoforged.neoforge.client.CustomSkyboxRenderer;
 import org.joml.Matrix4fc;
 import org.joml.Vector3f;
 
+import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -61,13 +59,13 @@ public class ReadstarSkyboxRenderer implements CustomSkyboxRenderer, ResourceMan
     }
 
     /**
-     * 扫描 stars/ 目录下所有 .json 文件，合并解析星表数据，返回不可变列表。
+     * 扫描 stars/ 目录下所有 .csv 文件，合并解析星表数据，返回不可变列表。
      */
-    private static List<ReadstarSkyRenderer.Star> parseStars(ResourceManager resourceManager, float maxVmag) {
+    private static List<ReadstarSkyRenderer.Star> parseStars(ResourceManager resourceManager, float maxmag) {
         List<ReadstarSkyRenderer.Star> result = new ArrayList<>();
 
         Map<Identifier, Resource> starResources = resourceManager.listResources(
-                "stars", id -> id.getPath().endsWith(".json"));
+                "stars", id -> id.getPath().endsWith(".csv"));
 
         if (starResources.isEmpty()) {
             ReadStar.LOGGER.warn("No star data files found in stars/");
@@ -76,26 +74,33 @@ public class ReadstarSkyboxRenderer implements CustomSkyboxRenderer, ResourceMan
 
         for (Map.Entry<Identifier, Resource> entry : starResources.entrySet()) {
             Identifier resPath = entry.getKey();
-            try (InputStreamReader reader = new InputStreamReader(entry.getValue().open(),
-                    StandardCharsets.UTF_8)) {
-                JsonArray starsArray = JsonParser.parseReader(reader).getAsJsonObject().getAsJsonArray("Stars");
-                if (starsArray == null) {
-                    ReadStar.LOGGER.warn("No 'Stars' array in: {}", resPath);
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(entry.getValue().open(),
+                    StandardCharsets.UTF_8))) {
+                // 跳过CSV头部行
+                String header = reader.readLine();
+                if (header == null || !header.startsWith("name,")) {
+                    ReadStar.LOGGER.warn("Invalid CSV header in: {}", resPath);
                     continue;
                 }
                 int before = result.size();
-                for (int i = 0; i < starsArray.size(); i++) {
-                    JsonObject obj = starsArray.get(i).getAsJsonObject();
-                    JsonArray pos = obj.getAsJsonArray("position");
-                    float px = pos.get(0).getAsFloat();
-                    float py = pos.get(1).getAsFloat();
-                    float pz = pos.get(2).getAsFloat();
-                    String name = obj.get("name").getAsString();
-                    float vmag = obj.get("Vmag").getAsFloat();
-                    int color = obj.get("color").getAsInt();
-                    if (vmag > maxVmag)
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    line = line.trim();
+                    if (line.isEmpty()) continue;
+                    String[] parts = line.split(",");
+                    if (parts.length < 6) {
+                        ReadStar.LOGGER.warn("Skipping malformed line in {}: {}", resPath, line);
                         continue;
-                    result.add(new ReadstarSkyRenderer.Star(name, new Vector3f(px, py, pz).normalize(), vmag, color));
+                    }
+                    String name = parts[0];
+                    float px = Float.parseFloat(parts[1]);
+                    float py = Float.parseFloat(parts[2]);
+                    float pz = Float.parseFloat(parts[3]);
+                    float mag = Float.parseFloat(parts[4]);
+                    int color = Integer.parseUnsignedInt(parts[5]);
+                    if (mag > maxmag)
+                        continue;
+                    result.add(new ReadstarSkyRenderer.Star(name, new Vector3f(px, py, pz).normalize(), mag, color));
                 }
                 ReadStar.LOGGER.info("Parsed {} stars from {}", result.size() - before, resPath);
             } catch (Exception e) {
@@ -108,14 +113,14 @@ public class ReadstarSkyboxRenderer implements CustomSkyboxRenderer, ResourceMan
     }
 
 
-    public void rebuildStarswithVmag(float vmag) {
-        this.stars = parseStars(Minecraft.getInstance().getResourceManager(), vmag);
+    public void rebuildStarsWithMag(float mag) {
+        this.stars = parseStars(Minecraft.getInstance().getResourceManager(), mag);
         this.brightstars = filterStars(6);
         this.skyRenderer.buildStarsBuffer(this.stars);
     }
 
-    private List<ReadstarSkyRenderer.Star> filterStars(float vmag){
-        return this.stars.stream().filter(star -> star.vmag() <= vmag).toList();
+    private List<ReadstarSkyRenderer.Star> filterStars(float mag){
+        return this.stars.stream().filter(star -> star.mag() <= mag).toList();
     }
 
     @Override
@@ -124,7 +129,7 @@ public class ReadstarSkyboxRenderer implements CustomSkyboxRenderer, ResourceMan
         SkyRenderState state = skyRenderState;
         if (state.skybox == DimensionType.Skybox.END) {
             skyRenderer.renderEndSky();
-            if (state.endFlashIntensity > 1.0E-5F) {
+            if (state.endFlashIntensity > 1.0e-5f) {
                 PoseStack poseStack = new PoseStack();
                 skyRenderer.renderEndFlash(poseStack, state.endFlashIntensity, state.endFlashXAngle, state.endFlashYAngle);
             }

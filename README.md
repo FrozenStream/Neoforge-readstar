@@ -56,15 +56,15 @@
 
 ### 逐星亮度
 
-基于视星等 Vmag，alpha 和 RGB 独立衰减：
+基于视星等 mag，alpha 和 RGB 独立衰减：
 
 | 参数 | 公式 | 说明 |
 |------|------|------|
-| Alpha | `10^(-0.05 × max(0, Vmag-1))` | 普森公式，vmag≤1 全亮 |
+| Alpha | `10^(-0.05 × max(0, mag-1))` | 普森公式，mag≤1 全亮 |
 | RGB | 同 Alpha | 颜色和透明度同衰减 |
-| 大小 | `max(10^(-0.05 × max(0, Vmag-2)), 0.3) × starCoreSize` | 暗星保持最小可见尺寸 |
+| 大小 | `max(10^(-0.05 × max(0, mag-2)), 0.3) × starCoreSize` | 暗星保持最小可见尺寸 |
 
-光晕仅 Vmag < 2.0 渲染，分三级：`< 0.5 → 高 / < 1.5 → 中 / < 2.0 → 低`。
+光晕仅 mag < 2.0 渲染，分三级：`< 0.5 → 高 / < 1.5 → 中 / < 2.0 → 低`。
 
 ---
 
@@ -247,7 +247,7 @@ assets/<命名空间>/textures/environment/celestial/
     {
       "name": "Sirius",
       "position": [-0.1875, -0.2876, 0.9392],
-      "Vmag": -1.46,
+      "mag": -1.46,
       "color": 4294967295
     }
   ]
@@ -258,7 +258,7 @@ assets/<命名空间>/textures/environment/celestial/
 |------|------|
 | `name` | 标识符（保留字段，无运行时作用） |
 | `position` | 单位球面方向 `[x,y,z]`，渲染时归一化到 100 距离。Y=北天极 |
-| `Vmag` | 视星等（Gaia G 波段 或 BSC5 V 波段）。决定光晕等级和亮度衰减 |
+| `mag` | 视星等（Gaia G 波段 或 BSC5 V 波段）。决定光晕等级和亮度衰减 |
 | `color` | ARGB 颜色值，作为图集精灵生成的 key |
 
 ---
@@ -355,13 +355,13 @@ assets/readstar/textures/environment/celestial/non-luminous/jupiter/
 
 | 命令 | 参数 | 说明 |
 |------|------|------|
-| `/readstar skybox vmag <0~10>` | `vmag` — 视星等上限 | 按 Vmag 阈值重建星星渲染缓冲。仅显示 `Vmag ≤ 阈值` 的恒星。默认 `6.0`（肉眼可见极限）。客户端命令，即时生效。 |
+| `/readstar skybox mag <0~10>` | `mag` — 视星等上限 | 按 mag 阈值重建星星渲染缓冲。仅显示 `mag ≤ 阈值` 的恒星。默认 `6.0`（肉眼可见极限）。客户端命令，即时生效。 |
 | `/readstar message all <消息>` | `消息` — 文本 | 向所有玩家广播消息（服务端命令，需 OP 权限） |
 | `/readstar message player <玩家> <消息>` | `玩家` — 目标, `消息` — 文本 | 向指定玩家发送消息（服务端命令，需 OP 权限） |
 
-### Vmag 参考
+### mag 参考
 
-| Vmag | 可见星数（约） | 说明 |
+| mag | 可见星数（约） | 说明 |
 |------|:--:|------|
 | 1 | 20 | 最亮恒星 |
 | 3 | 300 | 城市夜空 |
@@ -371,20 +371,20 @@ assets/readstar/textures/environment/celestial/non-luminous/jupiter/
 
 ### 星星缓冲区（Star Buffer）重建机制
 
-`/readstar skybox vmag` 命令的核心操作是**重建 GPU 星星顶点缓冲**，流程如下：
+`/readstar skybox mag` 命令的核心操作是**重建 GPU 星星顶点缓冲**，流程如下：
 
 ```
-命令触发 → 夹紧 Vmag 到 [0, 10] → 关闭旧 GPU 缓冲
-    → 按 Vmag 过滤星表 (vmag ≤ 阈值)
+命令触发 → 夹紧 mag 到 [0, 10] → 关闭旧 GPU 缓冲
+    → 按 mag 过滤星表 (mag ≤ 阈值)
     → 为每颗符合条件的星星生成 quad（4 顶点，含 Position/Offset/UV/Color）
     → 上传到新 GPU 缓冲 → 替换渲染器引用
 ```
 
 **为什么要重建？**
 
-星星渲染使用一个大型 GPU 顶点缓冲（Vertex Buffer），每颗星星对应一个 quad（2 三角形 = 4 顶点）。星表包含 400,000+ 颗恒星，但肉眼可见的仅约 5,000 颗（Vmag ≤ 6）。通过调整 Vmag 阈值：
+星星渲染使用一个大型 GPU 顶点缓冲（Vertex Buffer），每颗星星对应一个 quad（2 三角形 = 4 顶点）。星表包含 400,000+ 颗恒星，但肉眼可见的仅约 5,000 颗（mag ≤ 6）。通过调整 mag 阈值：
 
-| 场景 | 推荐 Vmag | 效果 |
+| 场景 | 推荐 mag | 效果 |
 |------|:--:|------|
 | 性能优化 | 3~4 | 减少顶点数，提升低配设备帧率 |
 | 真实夜空 | 6（默认） | 匹配肉眼可见极限 |
