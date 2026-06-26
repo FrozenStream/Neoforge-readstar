@@ -1,8 +1,5 @@
 package git.frozenstream.readstar.skybox;
 
-import com.google.gson.JsonArray;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.network.chat.Component;
@@ -35,8 +32,6 @@ import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.client.renderer.texture.TextureManager;
 import net.minecraft.client.resources.model.sprite.AtlasManager;
 import net.minecraft.resources.Identifier;
-import net.minecraft.server.packs.resources.Resource;
-import net.minecraft.server.packs.resources.ResourceManager;
 import net.minecraft.util.ARGB;
 import net.minecraft.util.Mth;
 import net.minecraft.world.attribute.EnvironmentAttributeProbe;
@@ -45,9 +40,7 @@ import net.minecraft.world.level.MoonPhase;
 import net.minecraft.world.level.dimension.DimensionType;
 import org.joml.*;
 
-import java.io.InputStreamReader;
 import java.lang.Math;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -84,8 +77,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
     private final GpuBuffer sunriseBuffer;
     private final GpuBuffer endFlashBuffer;
     private final GpuBuffer haloBuffer;
-    private final RenderSystem.AutoStorageIndexBuffer quadIndices = RenderSystem
-            .getSequentialBuffer(VertexFormat.Mode.QUADS);
+    private final RenderSystem.AutoStorageIndexBuffer quadIndices = RenderSystem.getSequentialBuffer(VertexFormat.Mode.QUADS);
     private final AbstractTexture endSkyTexture;
     private final AbstractTexture celestialSphereTexture;
     private final GpuBuffer topCelestialSphereBuffer;
@@ -591,7 +583,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         modelViewStack.mul(poseStack.last().pose());
         GpuBufferSlice dynamicTransforms = RenderSystem.getDynamicUniforms()
                 .writeTransform(modelViewStack,
-                        new Vector4f(1.0F, 1.0F, 1.0F, 1.0F),
+                        new Vector4f(0.2F, 0.2F, 0.2F, 1.0F),
                         new Vector3f(), new Matrix4f());
         GpuTextureView colorTexture = Minecraft.getInstance().getMainRenderTarget().getColorTextureView();
         GpuTextureView depthTexture = Minecraft.getInstance().getMainRenderTarget().getDepthTextureView();
