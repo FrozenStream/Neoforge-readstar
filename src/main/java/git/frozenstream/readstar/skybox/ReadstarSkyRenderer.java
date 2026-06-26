@@ -602,8 +602,8 @@ public class ReadstarSkyRenderer implements AutoCloseable {
             renderPass.setUniform("DynamicTransforms", dynamicTransforms);
             renderPass.bindTexture("Sampler0", this.celestialSphereTexture.getTextureView(),
                     this.celestialSphereTexture.getSampler());
-            renderPass.setVertexBuffer(0, this.topCelestialSphereBuffer);
-            renderPass.draw(0, vertexCount);
+            renderPass.setVertexBuffer(0, this.topCelestialSphereBuffer.slice());
+            renderPass.draw(vertexCount, 1, 0, 0);
         }
 
         // 下半球天穹
@@ -616,8 +616,8 @@ public class ReadstarSkyRenderer implements AutoCloseable {
             renderPass.setUniform("DynamicTransforms", dynamicTransforms);
             renderPass.bindTexture("Sampler0", this.celestialSphereTexture.getTextureView(),
                     this.celestialSphereTexture.getSampler());
-            renderPass.setVertexBuffer(0, this.bottomCelestialSphereBuffer);
-            renderPass.draw(0, vertexCount);
+            renderPass.setVertexBuffer(0, this.bottomCelestialSphereBuffer.slice());
+            renderPass.draw(vertexCount, 1, 0, 0);
         }
 
         modelViewStack.popMatrix();
