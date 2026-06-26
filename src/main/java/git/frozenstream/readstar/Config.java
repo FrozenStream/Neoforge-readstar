@@ -16,7 +16,7 @@ public class Config {
             .defineInRange("starCoreSize", 0.75, 0.01, 10.0);
 
     public static final ModConfigSpec.DoubleValue STAR_GLOW_SIZE = BUILDER
-            .comment("Star glow quad size multiplier for bright stars (Vmag < 2.0). Default: 1.5")
+            .comment("Star glow quad size multiplier for bright stars (mag < 2.0). Default: 1.5")
             .defineInRange("starGlowSize", 2, 0.01, 10.0);
 
     public static final ModConfigSpec.DoubleValue STAR_FOV_COMPENSATION_STRENGTH = BUILDER

@@ -19,7 +19,7 @@
   "planetdesc.readstar.mars": "Mars is the fourth planet from the Sun and the second-smallest planet in the Solar System. Often called the 'Red Planet' due to its reddish appearance, caused by iron oxide on its surface.",
   "planetdesc.readstar.moon": "The Moon is Earth's only natural satellite. Formed approximately 4.5 billion years ago, likely from the debris of a Mars-sized body colliding with early Earth, it is the fifth largest satellite in the Solar System.",
 
-  "command.readstar.vmag.success": "§aRebuilt star buffer with Vmag ≤ %.1f (current threshold: %.1f)",
+  "command.readstar.mag.success": "§aRebuilt star buffer with mag ≤ %.1f (current threshold: %.1f)",
   "command.readstar.message.all.success": "Sent message to all players: %s",
   "command.readstar.message.player.success": "Sent message to player %s: %s",
   "message.readstar.server_prefix": "§6[Server] §f%s",
