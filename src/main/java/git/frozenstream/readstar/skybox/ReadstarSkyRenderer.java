@@ -586,7 +586,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         modelViewStack.mul(poseStack.last().pose());
         GpuBufferSlice dynamicTransforms = RenderSystem.getDynamicUniforms()
                 .writeTransform(new Matrix4f(modelViewStack),
-                        new Vector4f(1.0F, 1.0F, 1.0F, 1.0F),
+                        new Vector4f(0.2F, 0.2F, 0.2F, 1.0F),
                         new Vector3f(), new Matrix4f());
         GpuTextureView colorTexture = this.renderTarget.getColorTextureView();
         GpuTextureView depthTexture = this.renderTarget.getDepthTextureView();
