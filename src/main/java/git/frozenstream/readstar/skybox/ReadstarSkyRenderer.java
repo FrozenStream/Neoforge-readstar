@@ -83,8 +83,6 @@ public class ReadstarSkyRenderer implements AutoCloseable {
     private final GpuBuffer topCelestialSphereBuffer;
     private final GpuBuffer bottomCelestialSphereBuffer;
     private int starIndexCount;
-    /** 最近一帧计算的有效星光亮度，供 renderHud 读取 */
-    private float lastStarBrightness;
 
     /**
      * 天球星表数据记录，存储从 stars.json 解析的原始星数据，可复用。
@@ -340,7 +338,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
                     Identifier coreId = Identifier.fromNamespaceAndPath(ReadStar.MODID, "environment/stars/color_" + color);
                     TextureAtlasSprite coreSprite = this.starsAtlas.getSprite(coreId);
 
-                    StarBufferUtils.writeStarQuad(buf, vtxSize, posOffset, uvOffset, colorOffset, offsetOffset,
+                    RenderUtils.writeStarQuad(buf, vtxSize, posOffset, uvOffset, colorOffset, offsetOffset,
                             center,
                             coreSprite.getU0(), coreSprite.getV0(), coreSprite.getU1(), coreSprite.getV1(),
                             starColor, starAlpha,
@@ -359,7 +357,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
                         Identifier glowId = Identifier.fromNamespaceAndPath(ReadStar.MODID, "environment/stars/" + glowLevel + "_" + color);
                         TextureAtlasSprite glowSprite = this.starsAtlas.getSprite(glowId);
 
-                        StarBufferUtils.writeStarQuad(buf, vtxSize, posOffset, uvOffset, colorOffset, offsetOffset,
+                        RenderUtils.writeStarQuad(buf, vtxSize, posOffset, uvOffset, colorOffset, offsetOffset,
                                 center,
                                 glowSprite.getU0(), glowSprite.getV0(), glowSprite.getU1(), glowSprite.getV1(),
                                 255, starAlpha,
@@ -696,74 +694,6 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         modelViewStack.popMatrix();
     }
 
-    /**
-     * 全天空大气叠加层：POSITION TRIANGLE_FAN（复用 topSkyBuffer）+ TRANSLUCENT 混合。
-     * 在星星和天体之后渲染，模拟大气散射在整个天空上的柔和着色。
-     *
-     * @param observer 观测者天体（取其 atmosphereHSV）
-     */
-    public void renderAtmosphereOverlay(CelestialBody observer, int skyColor) {
-        if (observer == null || !observer.hasAtmosphere) return;
-
-        int hsv = observer.atmosphereHSV;
-        float v = CelestialBody.getValueFloat(hsv);
-        if (v <= 0f) return;
-
-        // 天空亮度（白天→1，夜晚→0），平滑过渡，无硬截断
-        float skyBrightness = Math.max(ARGB.red(skyColor), Math.max(ARGB.green(skyColor), ARGB.blue(skyColor))) / 255f;
-
-        float[] rgb = hsvToRgb(
-                CelestialBody.getHueFloat(hsv),
-                CelestialBody.getSaturationFloat(hsv),
-                1.0f);
-        // alpha：浓度 × 天空亮度 × 0.08，夜晚自动→0，黄昏平滑过渡
-        float alpha = v * skyBrightness * 0.08f;
-
-        GpuBufferSlice dynamicTransforms = RenderSystem.getDynamicUniforms()
-                .writeTransform(RenderSystem.getModelViewMatrix(),
-                        new Vector4f(rgb[0], rgb[1], rgb[2], alpha), new Vector3f(),
-                        new Matrix4f());
-        GpuTextureView colorTexture = Minecraft.getInstance().getMainRenderTarget().getColorTextureView();
-        GpuTextureView depthTexture = Minecraft.getInstance().getMainRenderTarget().getDepthTextureView();
-
-        try (RenderPass renderPass = RenderSystem.getDevice()
-                .createCommandEncoder()
-                .createRenderPass(() -> "Atmosphere overlay", colorTexture, OptionalInt.empty(), depthTexture,
-                        OptionalDouble.empty())) {
-            renderPass.setPipeline(ReadstarRenderPipelines.ATMOSPHERE_OVERLAY);
-            RenderSystem.bindDefaultUniforms(renderPass);
-            renderPass.setUniform("DynamicTransforms", dynamicTransforms);
-            renderPass.setVertexBuffer(0, this.topSkyBuffer);
-            renderPass.draw(0, 10);
-        }
-    }
-
-    /**
-     * HSV → RGB 转换。
-     * @param hue 色相 (0.0~1.0)
-     * @param saturation 饱和度 (0.0~1.0)
-     * @param value 明度 (0.0~1.0)
-     * @return float[3] {r, g, b}，各分量 0.0~1.0
-     */
-    private static float[] hsvToRgb(float hue, float saturation, float value) {
-        hue = hue % 1.0f;
-        if (hue < 0) hue += 1.0f;
-
-        int h = (int) (hue * 6);
-        float f = hue * 6 - h;
-        float p = value * (1 - saturation);
-        float q = value * (1 - f * saturation);
-        float t = value * (1 - (1 - f) * saturation);
-
-        return switch (h) {
-            case 0 -> new float[] { value, t, p };
-            case 1 -> new float[] { q, value, p };
-            case 2 -> new float[] { p, value, t };
-            case 3 -> new float[] { p, q, value };
-            case 4 -> new float[] { t, p, value };
-            default -> new float[] { value, p, q };
-        };
-    }
 
     public void renderCelestialAndStars(PoseStack poseStack, float rainBrightness, float starBrightness, CelestialBody observer, long gameTime) {
         CelestialBodyManager manager = CelestialBodyManager.getInstance();
@@ -777,7 +707,6 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         // FOV 缩小时提升亮度（星星更大但各项发光不变 → 需要更亮）
         double brightnessFactor = 1.0 + Config.STAR_FOV_BRIGHTNESS_STRENGTH.get() * Math.max(0.0, (70.0 - fov) / 70.0);
         effectiveBrightness = effectiveBrightness * (float)brightnessFactor;
-        this.lastStarBrightness = effectiveBrightness;
 
         // ===== 整体天球框架旋转（先确定世界坐标 → 再整体旋转） =====
         // Y = currentRotationVector (观测者天顶方向) → 标准 Y(0,1,0) 映射至此
@@ -1022,7 +951,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         float v = CelestialBody.getValueFloat(glowHSV);
 
         // HSV → RGB，alpha 由 V × rainBrightness 控制
-        float[] rgb = hsvToRgb(h, s, 1.0f);
+        float[] rgb = RenderUtils.hsvToRgb(h, s, 1.0f);
         float alpha = v * rainBrightness * 0.2f;
 
         Matrix4fStack modelViewStack = RenderSystem.getModelViewStack();
@@ -1421,9 +1350,6 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         Quaternionf invQuat = new Quaternionf(observer.getLocalToWorldQuaternion()).conjugate();
         Vector3f celestialDir = invQuat.transform(
                 new Vector3f((float) worldLook.x, (float) worldLook.y, (float) worldLook.z));
-
-        // 星光不够亮 → 跳过
-        if (this.lastStarBrightness < 0.15f) return;
 
         // 查找视线最近的恒星
         Star nearestStar = null;
