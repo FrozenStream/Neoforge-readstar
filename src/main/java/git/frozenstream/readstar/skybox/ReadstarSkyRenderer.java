@@ -985,7 +985,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
 
     private final float skyHeight = 100f;
     private final double AU = 1.496e11;
-    // 尾部参数（所有彗星共享）
+    // 全局尾部参数
     private int dustSamples = 50;
     private float dustMaxDist = 0.6f * (float) AU;
     private float dustCurv = 0.35f;
@@ -1022,7 +1022,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
 
         // ==== 测试彗星：太阳侧面近日点，确保可见 ====
         {
-            Vector3f testComet = new Vector3f(0, 1.5e11f, 1.5e11f);
+            Vector3f testComet = new Vector3f(0, 4.5e10f, 4.5e10f);
             Vector3f testSun = new Vector3f(0, 0, 0);
             Vector3f testOrbitNormal = new Vector3f(0, 1, 0);  // 默认轨道法线
             renderOneComet(testComet, testSun, testOrbitNormal, observerPos, rainBrightness, poseStack, gameTick);
@@ -1094,7 +1094,26 @@ public class ReadstarSkyRenderer implements AutoCloseable {
                           cometSkyDir.z - tangent1.z - tangent2.z).setColor(white);
             try (MeshData mesh = buf.buildOrThrow()) {
                 GpuBuffer buffer = RenderSystem.getDevice().createBuffer(() -> "Comet marker", 32, mesh.vertexBuffer());
-                renderTailPass(buffer, markerVerts, "Comet marker", rainBrightness, poseStack);
+                Matrix4fStack modelViewStack = RenderSystem.getModelViewStack();
+                modelViewStack.pushMatrix();
+                modelViewStack.mul(poseStack.last().pose());
+                GpuBufferSlice dynamicTransforms = RenderSystem.getDynamicUniforms()
+                        .writeTransform(new Matrix4f(modelViewStack),
+                                new Vector4f(1, 1, 1, 1),
+                                new Vector3f(), new Matrix4f());
+                GpuTextureView color = Minecraft.getInstance().getMainRenderTarget().getColorTextureView();
+                GpuTextureView depth = Minecraft.getInstance().getMainRenderTarget().getDepthTextureView();
+
+                try (RenderPass renderPass = RenderSystem.getDevice()
+                        .createCommandEncoder()
+                        .createRenderPass(() -> "Comet marker", color, OptionalInt.empty(), depth, OptionalDouble.empty())) {
+                    renderPass.setPipeline(ReadstarRenderPipelines.COMET_TAIL);
+                    RenderSystem.bindDefaultUniforms(renderPass);
+                    renderPass.setUniform("DynamicTransforms", dynamicTransforms);
+                    renderPass.setVertexBuffer(0, buffer);
+                    renderPass.draw(0, markerVerts);
+                }
+                modelViewStack.popMatrix();
                 buffer.close();
             }
         }
@@ -1167,34 +1186,29 @@ public class ReadstarSkyRenderer implements AutoCloseable {
             }
             try (MeshData mesh = buf.buildOrThrow()) {
                 GpuBuffer buffer = RenderSystem.getDevice().createBuffer(() -> label, 32, mesh.vertexBuffer());
-                renderTailPass(buffer, verts, label, rainBrightness, poseStack);
+                Matrix4fStack modelViewStack = RenderSystem.getModelViewStack();
+                modelViewStack.pushMatrix();
+                modelViewStack.mul(poseStack.last().pose());
+                GpuBufferSlice dynamicTransforms = RenderSystem.getDynamicUniforms()
+                        .writeTransform(new Matrix4f(modelViewStack),
+                                new Vector4f(1, 1, 1, 1),
+                                new Vector3f(), new Matrix4f());
+                GpuTextureView color = Minecraft.getInstance().getMainRenderTarget().getColorTextureView();
+                GpuTextureView depth = Minecraft.getInstance().getMainRenderTarget().getDepthTextureView();
+
+                try (RenderPass renderPass = RenderSystem.getDevice()
+                        .createCommandEncoder()
+                        .createRenderPass(() -> label, color, OptionalInt.empty(), depth, OptionalDouble.empty())) {
+                    renderPass.setPipeline(ReadstarRenderPipelines.COMET_TAIL);
+                    RenderSystem.bindDefaultUniforms(renderPass);
+                    renderPass.setUniform("DynamicTransforms", dynamicTransforms);
+                    renderPass.setVertexBuffer(0, buffer);
+                    renderPass.draw(0, verts);
+                }
+                modelViewStack.popMatrix();
                 buffer.close();
             }
         }
-    }
-
-    /** 彗尾渲染 pass */
-    private void renderTailPass(GpuBuffer buffer, int totalVerts, String label, float rainBrightness, PoseStack poseStack) {
-        Matrix4fStack modelViewStack = RenderSystem.getModelViewStack();
-        modelViewStack.pushMatrix();
-        modelViewStack.mul(poseStack.last().pose());
-        GpuBufferSlice dynamicTransforms = RenderSystem.getDynamicUniforms()
-                .writeTransform(new Matrix4f(modelViewStack),
-                        new Vector4f(1, 1, 1, 1),
-                        new Vector3f(), new Matrix4f());
-        GpuTextureView color = this.renderTarget.getColorTextureView();
-        GpuTextureView depth = this.renderTarget.getDepthTextureView();
-
-        try (RenderPass renderPass = RenderSystem.getDevice()
-                .createCommandEncoder()
-                .createRenderPass(() -> label, color, Optional.empty(), depth, OptionalDouble.empty())) {
-            renderPass.setPipeline(ReadstarRenderPipelines.COMET_TAIL);
-            RenderSystem.bindDefaultUniforms(renderPass);
-            renderPass.setUniform("DynamicTransforms", dynamicTransforms);
-            renderPass.setVertexBuffer(0, buffer.slice());
-            renderPass.draw(totalVerts, 1, 0, 0);
-        }
-        modelViewStack.popMatrix();
     }
 
     /**
