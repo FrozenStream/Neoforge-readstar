@@ -622,24 +622,37 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         modelViewStack.popMatrix();
     }
 
-    public void renderSkyDisc(int skyColor) {
-        GpuBufferSlice dynamicTransforms = RenderSystem.getDynamicUniforms()
-                .writeTransform(RenderSystem.getModelViewMatrix(), ARGB.vector4fFromARGB32(skyColor), new Vector3f(),
-                        new Matrix4f());
-        GpuTextureView colorTexture = Minecraft.getInstance().getMainRenderTarget().getColorTextureView();
-        GpuTextureView depthTexture = Minecraft.getInstance().getMainRenderTarget().getDepthTextureView();
+   public void renderSkyDisc(int skyColor) {
+      GpuBufferSlice dynamicTransforms = RenderSystem.getDynamicUniforms().writeTransform(RenderSystem.getModelViewMatrixCopy(), ARGB.vector4fFromARGB32(skyColor));
+      GpuTextureView colorTexture = this.renderTarget.getColorTextureView();
+      GpuTextureView depthTexture = this.renderTarget.getDepthTextureView();
+      RenderPass renderPass = RenderSystem.getDevice().createCommandEncoder().createRenderPass(() -> {
+         return "Sky disc";
+      }, colorTexture, Optional.empty(), depthTexture, OptionalDouble.empty());
 
-        try (RenderPass renderPass = RenderSystem.getDevice()
-                .createCommandEncoder()
-                .createRenderPass(() -> "Sky disc", colorTexture, OptionalInt.empty(), depthTexture,
-                        OptionalDouble.empty())) {
-            renderPass.setPipeline(RenderPipelines.SKY);
-            RenderSystem.bindDefaultUniforms(renderPass);
-            renderPass.setUniform("DynamicTransforms", dynamicTransforms);
-            renderPass.setVertexBuffer(0, this.topSkyBuffer);
-            renderPass.draw(0, 10);
-        }
-    }
+      try {
+         renderPass.setPipeline(RenderPipelines.SKY);
+         RenderSystem.bindDefaultUniforms(renderPass);
+         renderPass.setUniform("DynamicTransforms", dynamicTransforms);
+         renderPass.setVertexBuffer(0, this.topSkyBuffer.slice());
+         renderPass.draw(10, 1, 0, 0);
+      } catch (Throwable var9) {
+         if (renderPass != null) {
+            try {
+               renderPass.close();
+            } catch (Throwable var8) {
+               var9.addSuppressed(var8);
+            }
+         }
+
+         throw var9;
+      }
+
+      if (renderPass != null) {
+         renderPass.close();
+      }
+
+   }
 
     public void extractRenderState(ClientLevel level, float partialTicks, Camera camera, SkyRenderState state) {
         state.skybox = level.dimensionType().skybox();
@@ -1101,17 +1114,17 @@ public class ReadstarSkyRenderer implements AutoCloseable {
                         .writeTransform(new Matrix4f(modelViewStack),
                                 new Vector4f(1, 1, 1, 1),
                                 new Vector3f(), new Matrix4f());
-                GpuTextureView color = Minecraft.getInstance().getMainRenderTarget().getColorTextureView();
-                GpuTextureView depth = Minecraft.getInstance().getMainRenderTarget().getDepthTextureView();
+                GpuTextureView color = this.renderTarget.getColorTextureView();
+                GpuTextureView depth = this.renderTarget.getDepthTextureView();
 
                 try (RenderPass renderPass = RenderSystem.getDevice()
                         .createCommandEncoder()
-                        .createRenderPass(() -> "Comet marker", color, OptionalInt.empty(), depth, OptionalDouble.empty())) {
+                        .createRenderPass(() -> "Comet marker", color, Optional.empty(), depth, OptionalDouble.empty())) {
                     renderPass.setPipeline(ReadstarRenderPipelines.COMET_TAIL);
                     RenderSystem.bindDefaultUniforms(renderPass);
                     renderPass.setUniform("DynamicTransforms", dynamicTransforms);
-                    renderPass.setVertexBuffer(0, buffer);
-                    renderPass.draw(0, markerVerts);
+                    renderPass.setVertexBuffer(0, buffer.slice());
+                    renderPass.draw(markerVerts, 1, 0, 0);
                 }
                 modelViewStack.popMatrix();
                 buffer.close();
@@ -1193,17 +1206,17 @@ public class ReadstarSkyRenderer implements AutoCloseable {
                         .writeTransform(new Matrix4f(modelViewStack),
                                 new Vector4f(1, 1, 1, 1),
                                 new Vector3f(), new Matrix4f());
-                GpuTextureView color = Minecraft.getInstance().getMainRenderTarget().getColorTextureView();
-                GpuTextureView depth = Minecraft.getInstance().getMainRenderTarget().getDepthTextureView();
+                GpuTextureView color = this.renderTarget.getColorTextureView();
+                GpuTextureView depth = this.renderTarget.getDepthTextureView();
 
                 try (RenderPass renderPass = RenderSystem.getDevice()
                         .createCommandEncoder()
-                        .createRenderPass(() -> label, color, OptionalInt.empty(), depth, OptionalDouble.empty())) {
+                        .createRenderPass(() -> label, color, Optional.empty(), depth, OptionalDouble.empty())) {
                     renderPass.setPipeline(ReadstarRenderPipelines.COMET_TAIL);
                     RenderSystem.bindDefaultUniforms(renderPass);
                     renderPass.setUniform("DynamicTransforms", dynamicTransforms);
-                    renderPass.setVertexBuffer(0, buffer);
-                    renderPass.draw(0, verts);
+                    renderPass.setVertexBuffer(0, buffer.slice());
+                    renderPass.draw(verts, 1, 0, 0);
                 }
                 modelViewStack.popMatrix();
                 buffer.close();
