@@ -64,7 +64,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
     // private static final int END_SKY_QUAD_COUNT = 6;
     // private static final float END_FLASH_HEIGHT = 100.0F;
     // private static final float END_FLASH_SCALE = 60.0F;
-    private static final Identifier CELESTIAL_SPHERE_LOCATION = Identifier.fromNamespaceAndPath(ReadStar.MODID, "textures/environment/test_dual_blurred.png");
+    private static final Identifier CELESTIAL_SPHERE_LOCATION = Identifier.fromNamespaceAndPath(ReadStar.MODID, "textures/environment/test_dual_blurred_qtr.png");
     private final TextureAtlas celestialsAtlas;
     private final TextureAtlas starsAtlas;
     private GpuBuffer starBuffer;
