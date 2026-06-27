@@ -114,20 +114,18 @@ public class ArmillarySphereRenderer
                 parentPos.z() + (float) (offset.y() * localScale));
     }
 
-    /** 用细四边形模拟轨道线（采样完整3D轨道，含倾角） */
+    /** 用细四边形模拟轨道线（等偏近点角采样，避免高偏心率轨道折断） */
     private void drawOrbit(PoseStack ps, SubmitNodeCollector col, CelestialBody child, Vector3f parentRenderPos, float z) {
         if (child.orbit == null || child.orbit.semiMajorAxis() == 0) return;
         Orbit o = child.orbit;
-        // 轨道周期 T = 2π / n，n = √(GM/a³)
-        double n = Math.sqrt(6.67430e-11 * child.parent.mass / Math.pow(o.semiMajorAxis(), 3));
-        double period = 2 * Math.PI / n;
         boolean isLocal = !(child.parent == CelestialBody.Root || child.parent.parent == CelestialBody.Root);
         col.submitCustomGeometry(ps, RenderTypes.debugQuads(), (pose, vc) -> {
             float lineW = 0.001f;
             Vector3f prev = null;
             for (int i = 0; i <= ORB_SEG; i++) {
-                double t = period * i / ORB_SEG;
-                Vector3fc phys = o.calPosition(child.parent.mass, t);
+                // 等偏近点角采样：E 均匀分布在 [0, 2π)，保证轨道线处处平滑
+                double E = 2.0 * Math.PI * i / ORB_SEG;
+                Vector3fc phys = o.calPositionFromE(E);
                 Vector3f curr;
                 if (isLocal) {
                     curr = mapLocal(new Vector3f(phys), parentRenderPos);

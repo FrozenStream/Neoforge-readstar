@@ -16,13 +16,8 @@
 
 ## 快速开始
 
-```bash
-./gradlew build          # 构建
-./gradlew runClient      # 运行客户端
-./gradlew runServer      # 运行服务端
-```
-
-模组通过**数据包** `data/readstar/celestial/system.json` 定义天体系统，通过**资源包** `assets/readstar/custom/stars/stars.json` 定义恒星目录。
+**数据包** `data/readstar/celestial/system.json` 定义天体系统，
+**资源包** `assets/readstar/custom/stars/stars.json` 定义恒星目录。
 
 配置文件修改后 F3+T 热重载即可生效；数据包修改需 `/reload` 或重启。
 
@@ -123,48 +118,6 @@
 
 名称大小写不敏感。`children: {}` 表示无子天体。嵌套深度不限。
 
-### 完整示例
-
-太阳 → 地球+火星 → 月球。数值采自真实太阳系。
-
-```json
-{
-  "System": {
-    "Sun": {
-      "mass": 1.989e30, "radius": 6.957e8, "luminance": 15,
-      "unstableDirtySnowball": false, "hasAtmosphere": false, "atmosphereHSV": 0, "starHSV": 2172671,
-      "axis": [0, 0, 0],
-      "orbit": { 
-        "semiMajorAxis": 0, "eccentricity": 0, "inclination": 0, "argumentOfPeriapsis": 0, "longitudeOfAscendingNode": 0, "initialMeanAnomaly": 0 },
-      "children": {
-        "Earth": {
-          "mass": 5.972e24, "radius": 6.371e6, "luminance": 0,
-          "unstableDirtySnowball": false, "hasAtmosphere": true, "atmosphereHSV": 9738751, "starHSV": 9732275,
-          "axis": [0, 0, 0],
-          "orbit": { "semiMajorAxis": 1.496e11, "eccentricity": 0.0167, "inclination": 0, "argumentOfPeriapsis": 1.796, "longitudeOfAscendingNode": 0, "initialMeanAnomaly": 6.240 },
-          "children": {
-            "Moon": {
-              "mass": 7.342e22, "radius": 1.737e6, "luminance": 0,
-              "unstableDirtySnowball": false, "hasAtmosphere": false, "atmosphereHSV": 0, "starHSV": 1707468,
-              "axis": [0, 0, 0.5],
-              "orbit": { "semiMajorAxis": 3.844e8, "eccentricity": 0.0549, "inclination": 0.0899, "argumentOfPeriapsis": 0, "longitudeOfAscendingNode": 0, "initialMeanAnomaly": 0 },
-              "children": {}
-            }
-          }
-        },
-        "Mars": {
-          "mass": 6.417e23, "radius": 3.390e6, "luminance": 0,
-          "unstableDirtySnowball": false, "hasAtmosphere": true, "atmosphereHSV": 1336835, "starHSV": 1356697,
-          "axis": [0, 0, 0],
-          "orbit": { "semiMajorAxis": 2.279e11, "eccentricity": 0.0934, "inclination": 0.0323, "argumentOfPeriapsis": 0, "longitudeOfAscendingNode": 0.865, "initialMeanAnomaly": 0 },
-          "children": {}
-        }
-      }
-    }
-  }
-}
-```
-
 ### 继承与时间
 
 - `hostStar`：递归向上查找首个 `luminance > 0` 的祖先
@@ -187,25 +140,6 @@ atmosphereHSV / starHSV = (H << 16) | (S << 8) | V
 | S (Saturation) | 8-15 | 0~255 | 饱和度（0=灰白, 255=纯色） |
 | V (Value) | 0-7 | 0~255 | 浓度/亮度（atmosphereHSV=大气浓度, starHSV=天体亮度） |
 
-**示例值**：
-
-| 天体 | atmosphereHSV | starHSV | 说明 |
-|------|:--:|:--:|------|
-| Sun | `0` | `2172671` | 无大气，G 型黄白星 |
-| Earth | `9738751` | `9732275` | 蓝天 (H=0.58, S=0.6, V=1.0) |
-| Mars | `1336835` | `1356697` | 淡红棕大气 (V=0.01, 极稀薄) |
-
-代码中通过 `CelestialBody.packHSV(h, s, v)` 打包，`getHueFloat/ getSaturationFloat/ getValueFloat` 解码。
-
-**光晕计算**（`computeGlowColor`）：发光体的光晕色 = 星光 × 大气散射。色相向大气偏移，饱和度和明度微增。
-
-**渲染分层**：
-```
-1. renderSkyDisc     → 原版 biome 天空底色
-2. 天体 + 星星        → luminous / non-luminous + 星表
-3. renderAtmosphereOverlay → 半透明全天空大气叠加（夜晚自动淡出）
-```
-
 ### 纹理目录
 
 天体纹理按类别分目录存放，由 `celestial.json` 图集自动扫描：
@@ -225,34 +159,7 @@ assets/<命名空间>/textures/environment/celestial/
 
 ### 恒星目录
 
-**路径**: `assets/readstar/custom/stars/stars.json`
-
-#### 数据来源
-
-星表由 `.data/` 目录下脚本自动生成：
-
-| 脚本 | 数据源 | 输出 |
-|------|--------|------|
-| `generate_stars.py` | BSC5 亮星星表 | `stars_named.json` (361 IAU命名) + `stars_numbered.json` (8043 HR编号) |
-| `gaia_download.py` | Gaia Archive TAP API | `gaia_bright_with_teff.vot` (含有效温度) |
-| `gaia_to_stars.py` | Gaia DR3 + BSC5 回退 | `stars_gaia_named.json` (361 颗) + `stars_gaia_numbered.json` (11809 颗) |
-
-**颜色算法**：优先使用 Gaia GSP-Phot 有效温度 → Planckian 黑体辐射 → sRGB；无温度数据时回退到 bp_rp 色指数分段映射。最亮 12 颗星（天狼星、织女星等）因 Gaia 探测器饱和，保留 BSC5 数据。
-
-#### JSON 格式
-
-```json
-{
-  "Stars": [
-    {
-      "name": "Sirius",
-      "position": [-0.1875, -0.2876, 0.9392],
-      "mag": -1.46,
-      "color": 4294967295
-    }
-  ]
-}
-```
+**路径**: `assets/readstar/custom/stars/stars.csv`
 
 | 字段 | 说明 |
 |------|------|
@@ -337,8 +244,6 @@ assets/readstar/textures/environment/celestial/non-luminous/jupiter/
 
 每种颜色生成 4 精灵：`color_{c}`、`glow_low_{c}`、`glow_med_{c}`、`glow_high_{c}`。
 
-底模要求：RGBA 32-bit、32×32、边缘纯黑、光晕亮度压制 0.35×
-
 #### 天体图集
 
 `assets/readstar/atlases/celestial.json` 使用 `minecraft:directory` 源，自动扫描所有命名空间 `textures/environment/celestial/`。
@@ -355,66 +260,7 @@ assets/readstar/textures/environment/celestial/non-luminous/jupiter/
 
 | 命令 | 参数 | 说明 |
 |------|------|------|
-| `/readstar skybox mag <0~10>` | `mag` — 视星等上限 | 按 mag 阈值重建星星渲染缓冲。仅显示 `mag ≤ 阈值` 的恒星。默认 `6.0`（肉眼可见极限）。客户端命令，即时生效。 |
-| `/readstar message all <消息>` | `消息` — 文本 | 向所有玩家广播消息（服务端命令，需 OP 权限） |
-| `/readstar message player <玩家> <消息>` | `玩家` — 目标, `消息` — 文本 | 向指定玩家发送消息（服务端命令，需 OP 权限） |
-
-### mag 参考
-
-| mag | 可见星数（约） | 说明 |
-|------|:--:|------|
-| 1 | 20 | 最亮恒星 |
-| 3 | 300 | 城市夜空 |
-| 6 | 5,000 | 肉眼极限（默认） |
-| 8 | 40,000 | 双筒望远镜 |
-| 10 | 300,000+ | 全部星表 |
-
-### 星星缓冲区（Star Buffer）重建机制
-
-`/readstar skybox mag` 命令的核心操作是**重建 GPU 星星顶点缓冲**，流程如下：
-
-```
-命令触发 → 夹紧 mag 到 [0, 10] → 关闭旧 GPU 缓冲
-    → 按 mag 过滤星表 (mag ≤ 阈值)
-    → 为每颗符合条件的星星生成 quad（4 顶点，含 Position/Offset/UV/Color）
-    → 上传到新 GPU 缓冲 → 替换渲染器引用
-```
-
-**为什么要重建？**
-
-星星渲染使用一个大型 GPU 顶点缓冲（Vertex Buffer），每颗星星对应一个 quad（2 三角形 = 4 顶点）。星表包含 400,000+ 颗恒星，但肉眼可见的仅约 5,000 颗（mag ≤ 6）。通过调整 mag 阈值：
-
-| 场景 | 推荐 mag | 效果 |
-|------|:--:|------|
-| 性能优化 | 3~4 | 减少顶点数，提升低配设备帧率 |
-| 真实夜空 | 6（默认） | 匹配肉眼可见极限 |
-| 天文观测 | 8~10 | 显示全部暗星，适合望远镜视角 |
-
-**注意**：该命令是**客户端命令**，仅影响当前客户端的渲染。修改后即时生效，无需重载资源包。重新进入世界时会恢复为配置文件中的默认值。
-
----
-
-## 构建 & 故障排查
-
-```bash
-./gradlew build          # 构建 JAR
-./gradlew runData        # 数据生成（图集配置）
-./gradlew runClient      # 运行客户端
-./gradlew runServer      # 运行服务端
-```
-
-产物：`build/libs/readstar-*.jar`
-
-| 现象 | 检查点 |
-|------|--------|
-| 星星紫黑贴图 | `star_base.png` 是否为 32-bit RGBA |
-| 月相紫黑 | 对应 PNG 缺失或文件名拼写错误 |
-| 天体不显示 | `system.json` 中是否有 `hostStar`（自身或祖先 luminance>0） |
-| 光晕不显示 | `halo.png` 是否在 `textures/environment/celestial/` |
-| 大气颜色异常 | `atmosphereHSV` / `starHSV` 打包值是否正确 |
-| 数据包未生效 | `/reload` 或重启 |
-| 资源包未更新 | F3+T |
-| FOV 补偿不生效 | 配置文件 `starFovCompensationStrength` 是否 > 0 |
+| `/readstar mag <0~10>` | `mag` — 视星等上限 | 按 mag 阈值重建星星渲染缓冲，默认 `6.0`。 |
 
 ---
 

@@ -72,15 +72,28 @@ public record Orbit(
         double M = initialMeanAnomaly + mean_anomaly_angular_velocity(centralMass, semiMajorAxis) * t;
         M = M % (2 * Math.PI); // 归一化到 [0, 2π)
 
-        // 步骤3：解 Kepler 方程，求偏近点角 E
+        // 步骤2：解 Kepler 方程，求偏近点角 E
         double E = solveKepler(M, eccentricity);
 
-        // 步骤4：计算轨道平面坐标 (xp, yp)
+        // 步骤3-4：委托给 calPositionFromE
+        return calPositionFromE(E);
+    }
+
+    /**
+     * 直接从偏近点角 E 计算轨道上的 3D 位置。
+     * 用于渲染时按等 E 间隔采样轨道线，避免高偏心率轨道因等时采样导致的折线断裂。
+     *
+     * @param E 偏近点角（弧度），应在 [0, 2π) 范围内
+     * @return 星体相对于中心天体的 XYZ 坐标（米）
+     */
+    public Vector3fc calPositionFromE(double E) {
+        if (semiMajorAxis == 0) return new Vector3f(0, 0, 0);
+
+        // 计算轨道平面坐标 (xp, yp)
         double xp = semiMajorAxis * (Math.cos(E) - eccentricity);
         double yp = semiMajorAxis * Math.sqrt(1 - eccentricity * eccentricity) * Math.sin(E);
 
-        // 步骤5：构造旋转矩阵并计算 XYZ
-        // inclination (inclination) 是轨道倾角，argumentOfPeriapsis (argumentOfPeriapsis) 是近心点幅角， longitudeOfAscendingNode (longitudeOfAscendingNode) 是升交点经度
+        // 构造旋转矩阵并计算 XYZ
         double cos_Omega = Math.cos(longitudeOfAscendingNode);
         double sin_Omega = Math.sin(longitudeOfAscendingNode);
         double cos_i = Math.cos(inclination);
