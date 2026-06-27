@@ -13,12 +13,11 @@ import git.frozenstream.readstar.sprite.MoonSpriteSource;
 import git.frozenstream.readstar.sprite.StarSpriteSource;
 import git.frozenstream.readstar.sprite.SunSpriteSource;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.resources.model.sprite.AtlasManager;
 import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.Identifier;
-import net.minecraft.util.ARGB;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.Level;
+import net.neoforged.neoforge.client.event.RegisterClientReloadListenersEvent;
 import org.joml.Vector3f;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -26,12 +25,7 @@ import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent;
-import net.neoforged.neoforge.client.event.AddClientReloadListenersEvent;
 import net.neoforged.neoforge.client.event.EntityRenderersEvent;
-import net.neoforged.neoforge.client.event.ExtractLevelRenderStateEvent;
-import net.neoforged.neoforge.client.event.RegisterRenderPipelinesEvent;
-import net.neoforged.neoforge.client.event.RegisterSpriteSourcesEvent;
-import net.neoforged.neoforge.client.event.RegisterTextureAtlasesEvent;
 import net.neoforged.neoforge.client.event.RegisterClientCommandsEvent;
 import net.neoforged.neoforge.client.event.RenderGuiEvent;
 import net.neoforged.neoforge.client.gui.ConfigurationScreen;
@@ -47,12 +41,12 @@ public class ReadStarClient {
     // 静态保存天空渲染器实例，以便在多个地方使用
     private static final ReadstarSkyboxRenderer skyboxRenderer = ReadstarSkyboxRenderer.getInstance();
 
-    public static final Identifier CELESTIAL_ATLAS_TEXTURE = Identifier.fromNamespaceAndPath(ReadStar.MODID,
+    public static final ResourceLocation CELESTIAL_ATLAS_TEXTURE = ResourceLocation.fromNamespaceAndPath(ReadStar.MODID,
             "textures/atlas/celestial.png");
-    public static final Identifier CELESTIAL_ATLAS_INFO = Identifier.fromNamespaceAndPath(ReadStar.MODID, "celestial");
-    public static final Identifier STAR_ATLAS_TEXTURE = Identifier.fromNamespaceAndPath(ReadStar.MODID,
+    public static final ResourceLocation CELESTIAL_ATLAS_INFO = ResourceLocation.fromNamespaceAndPath(ReadStar.MODID, "celestial");
+    public static final ResourceLocation STAR_ATLAS_TEXTURE = ResourceLocation.fromNamespaceAndPath(ReadStar.MODID,
             "textures/atlas/star.png");
-    public static final Identifier STAR_ATLAS_INFO = Identifier.fromNamespaceAndPath(ReadStar.MODID, "star");
+    public static final ResourceLocation STAR_ATLAS_INFO = ResourceLocation.fromNamespaceAndPath(ReadStar.MODID, "star");
 
 
     @SubscribeEvent
@@ -88,9 +82,8 @@ public class ReadStarClient {
     }
 
     @SubscribeEvent
-    static void onRegisterReloadListeners(AddClientReloadListenersEvent event) {
-        Identifier skyId = Identifier.fromNamespaceAndPath(ReadStar.MODID, "skybox");
-        event.addListener(skyId, skyboxRenderer);
+    static void onRegisterReloadListeners(RegisterClientReloadListenersEvent event) {
+        event.registerReloadListener(skyboxRenderer);
     }
 
     // ==================== 浑天仪 BER 注册 ====================

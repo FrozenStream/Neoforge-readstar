@@ -1,8 +1,8 @@
 package git.frozenstream.readstar;
 
-import net.minecraft.resources.Identifier;
 import net.minecraft.resources.ResourceKey;
-import net.neoforged.neoforge.event.AddServerReloadListenersEvent;
+import net.minecraft.resources.ResourceLocation;
+import net.neoforged.neoforge.event.AddReloadListenerEvent;
 import org.slf4j.Logger;
 
 import com.mojang.logging.LogUtils;
@@ -65,7 +65,7 @@ public class ReadStar {
             "armillary_sphere",
             () -> new ArmillarySphereBlock(BlockBehaviour.Properties.of()
                     .setId(ResourceKey.create(Registries.BLOCK,
-                            Identifier.fromNamespaceAndPath(MODID, "armillary_sphere")))
+                            ResourceLocation.fromNamespaceAndPath(MODID, "armillary_sphere")))
                     .strength(3.5f, 6.0f)
                     .requiresCorrectToolForDrops()
                     .sound(SoundType.COPPER)
@@ -135,9 +135,8 @@ public class ReadStar {
     }
 
     @SubscribeEvent
-    public void onRegisterServerReloadListeners(AddServerReloadListenersEvent event) {
-        Identifier PLANET_SYSTEM_ID = Identifier.fromNamespaceAndPath(ReadStar.MODID, "celestial/server");
-        event.addListener(PLANET_SYSTEM_ID, new CelestialReloader());
+    public void onRegisterServerReloadListeners(AddReloadListenerEvent event) {
+        event.addListener(new CelestialReloader());
     }
 
 
