@@ -29,9 +29,7 @@ import net.minecraft.client.renderer.texture.AbstractTexture;
 import net.minecraft.client.renderer.texture.TextureAtlas;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.client.renderer.texture.TextureManager;
-import net.minecraft.client.resources.model.sprite.AtlasManager;
-import net.minecraft.resources.Identifier;
-import net.minecraft.util.ARGB;
+import net.minecraft.util.FastColor;
 import net.minecraft.util.Mth;
 import net.minecraft.world.attribute.EnvironmentAttributeProbe;
 import net.minecraft.world.attribute.EnvironmentAttributes;
@@ -50,7 +48,7 @@ import java.util.OptionalInt;
 
 public class ReadstarSkyRenderer implements AutoCloseable {
     // ⚠️ DO NOT REMOVE: 以下注释掉的常量是原版参考值，保留以供对比和维护参考
-    // private static final Identifier SUN_SPRITE = Identifier.fromNamespaceAndPath("minecraft", "environment/celestial/sun");
+    // private static final ResourceLocation SUN_SPRITE = ResourceLocation.fromNamespaceAndPath("minecraft", "environment/celestial/sun");
     private static final ResourceLocation END_FLASH_SPRITE = ResourceLocation.fromNamespaceAndPath("minecraft", "environment/celestial/end_flash");
     private static final ResourceLocation END_SKY_LOCATION = ResourceLocation.withDefaultNamespace("textures/environment/end_sky.png");
     // private static final float SKY_DISC_RADIUS = 512.0F;
@@ -92,9 +90,9 @@ public class ReadstarSkyRenderer implements AutoCloseable {
      */
     public record Star(String name, Vector3f direction, float mag, int color) {}
 
-    public ReadstarSkyRenderer(TextureManager textureManager, AtlasManager atlasManager) {
-        this.celestialsAtlas = atlasManager.getAtlasOrThrow(ReadStarClient.CELESTIAL_ATLAS_INFO);
-        this.starsAtlas = atlasManager.getAtlasOrThrow(ReadStarClient.STAR_ATLAS_INFO);
+    public ReadstarSkyRenderer(TextureManager textureManager, TextureAtlas celestialsAtlas, TextureAtlas starsAtlas) {
+        this.celestialsAtlas = celestialsAtlas;
+        this.starsAtlas = starsAtlas;
         this.endSkyBuffer = buildEndSky();
         this.endSkyTexture = this.getTexture(textureManager, END_SKY_LOCATION);
         this.endFlashBuffer = buildEndFlashQuad(this.celestialsAtlas);
@@ -102,21 +100,26 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         this.haloBuffer = buildHaloQuad(this.celestialsAtlas);
         this.celestialSphereTexture = this.getTexture(textureManager, CELESTIAL_SPHERE_LOCATION);
 
-        try (ByteBufferBuilder builder = ByteBufferBuilder.exactlySized(10 * DefaultVertexFormat.POSITION.getVertexSize())) {
-            BufferBuilder bufferBuilder = new BufferBuilder(builder, VertexFormat.Mode.TRIANGLE_FAN, DefaultVertexFormat.POSITION);
-            this.buildSkyDisc(bufferBuilder, 16.0F);
+        BufferBuilder bufferBuilder = Tesselator.getInstance().begin(VertexFormat.Mode.TRIANGLE_FAN, DefaultVertexFormat.POSITION);
+        this.buildSkyDisc(bufferBuilder, 16.0F);
 
-            try (MeshData meshData = bufferBuilder.buildOrThrow()) {
-                this.topSkyBuffer = RenderSystem.getDevice().createBuffer(() -> "Top sky vertex buffer", 32, meshData.vertexBuffer());
-            }
-
-            bufferBuilder = new BufferBuilder(builder, VertexFormat.Mode.TRIANGLE_FAN, DefaultVertexFormat.POSITION);
-            this.buildSkyDisc(bufferBuilder, -16.0F);
-
-            try (MeshData meshData = bufferBuilder.buildOrThrow()) {
-                this.bottomSkyBuffer = RenderSystem.getDevice().createBuffer(() -> "Bottom sky vertex buffer", 32, meshData.vertexBuffer());
-            }
+        try (MeshData meshData = bufferBuilder.buildOrThrow()) {
+            this.topSkyBuffer = new VertexBuffer(VertexBuffer.Usage.STATIC);
+            this.topSkyBuffer.bind();
+            this.topSkyBuffer.upload(meshData);
+            VertexBuffer.unbind();
         }
+
+        bufferBuilder = Tesselator.getInstance().begin(VertexFormat.Mode.TRIANGLE_FAN, DefaultVertexFormat.POSITION);
+        this.buildSkyDisc(bufferBuilder, -16.0F);
+
+        try (MeshData meshData = bufferBuilder.buildOrThrow()) {
+            this.bottomSkyBuffer = new VertexBuffer(VertexBuffer.Usage.STATIC);
+            this.bottomSkyBuffer.bind();
+            this.bottomSkyBuffer.upload(meshData);
+            VertexBuffer.unbind();
+        }
+
 
         // 构建天球图纹理半球天穹网格（QUADS 经纬球）
         this.topCelestialSphereBuffer = buildCelestialSphereDome(true);
@@ -146,7 +149,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
      * 精灵路径：environment/celestial/luminous/{name}
      */
     private VertexBuffer buildLuminousBuffer(String name) {
-        Identifier spriteId = Identifier.fromNamespaceAndPath(ReadStar.MODID,
+        ResourceLocation spriteId = ResourceLocation.fromNamespaceAndPath(ReadStar.MODID,
                 "environment/celestial/luminous/" + name);
         TextureAtlasSprite sprite = celestialsAtlas.getSprite(spriteId);
         if (sprite == celestialsAtlas.missingSprite()) {
@@ -166,7 +169,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
 
         List<TextureAtlasSprite> sprites = new ArrayList<>();
         for (MoonPhase phase : phases) {
-            Identifier spriteId = Identifier.fromNamespaceAndPath(ReadStar.MODID,
+            ResourceLocation spriteId = ResourceLocation.fromNamespaceAndPath(ReadStar.MODID,
                     "environment/celestial/" + category + "/" + name + "/" + phase.getSerializedName());
             TextureAtlasSprite sprite = celestialsAtlas.getSprite(spriteId);
             if (sprite != celestialsAtlas.missingSprite()) {
@@ -201,7 +204,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         }
     }
 
-    private AbstractTexture getTexture(TextureManager textureManager, Identifier location) {
+    private AbstractTexture getTexture(TextureManager textureManager, ResourceLocation location) {
         return textureManager.getTexture(location);
     }
 
@@ -212,8 +215,8 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         VertexBuffer var16;
         try (ByteBufferBuilder byteBufferBuilder = ByteBufferBuilder.exactlySized(18 * vtxSize)) {
             BufferBuilder bufferBuilder = new BufferBuilder(byteBufferBuilder, VertexFormat.Mode.TRIANGLE_FAN, DefaultVertexFormat.POSITION_COLOR);
-            int centerColor = ARGB.white(1.0F);
-            int ringColor = ARGB.white(0.0F);
+            int centerColor = FastColor.ARGB32.color(255, 255, 255, 255);
+            int ringColor = FastColor.ARGB32.color(0, 255, 255, 255);
             bufferBuilder.addVertex(0.0F, 100.0F, 0.0F).setColor(centerColor);
 
             for (int i = 0; i <= 16; i++) {
@@ -240,10 +243,10 @@ public class ReadstarSkyRenderer implements AutoCloseable {
      * 初始顶点色为白色，运行时通过 DynamicTransforms 的 color 乘数着色。
      */
     private static VertexBuffer buildHaloQuad(TextureAtlas atlas) {
-        Identifier haloId = Identifier.fromNamespaceAndPath(ReadStar.MODID, "environment/celestial/halo");
+        ResourceLocation haloId = ResourceLocation.fromNamespaceAndPath(ReadStar.MODID, "environment/celestial/halo");
         TextureAtlasSprite sprite = atlas.getSprite(haloId);
         VertexFormat format = DefaultVertexFormat.POSITION_TEX_COLOR;
-        int white = ARGB.color(255, 255, 255, 255);
+        int white = FastColor.ARGB32.color(255, 255, 255, 255);
 
         try (ByteBufferBuilder bb = ByteBufferBuilder.exactlySized(4 * format.getVertexSize())) {
             BufferBuilder buf = new BufferBuilder(bb, VertexFormat.Mode.QUADS, format);
@@ -334,7 +337,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
                     float starSize = Math.max(sizeF, 0.3f) * coreSize;
 
                     // ---- 核心 quad（所有星）：4 顶点共享 center，Offset 区分角落 ----
-                    Identifier coreId = Identifier.fromNamespaceAndPath(ReadStar.MODID, "environment/stars/color_" + color);
+                    ResourceLocation coreId = ResourceLocation.fromNamespaceAndPath(ReadStar.MODID, "environment/stars/color_" + color);
                     TextureAtlasSprite coreSprite = this.starsAtlas.getSprite(coreId);
 
                     RenderUtils.writeStarQuad(buf, vtxSize, posOffset, uvOffset, colorOffset, offsetOffset,
@@ -353,7 +356,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
                         else
                             glowLevel = "glow_low";
 
-                        Identifier glowId = Identifier.fromNamespaceAndPath(ReadStar.MODID, "environment/stars/" + glowLevel + "_" + color);
+                        ResourceLocation glowId = ResourceLocation.fromNamespaceAndPath(ReadStar.MODID, "environment/stars/" + glowLevel + "_" + color);
                         TextureAtlasSprite glowSprite = this.starsAtlas.getSprite(glowId);
 
                         RenderUtils.writeStarQuad(buf, vtxSize, posOffset, uvOffset, colorOffset, offsetOffset,
@@ -414,7 +417,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         VertexFormat format = DefaultVertexFormat.POSITION_TEX_COLOR;
         int cells = DOME_STACKS * DOME_SLICES;
         int vertexCount = cells * 6; // 每格 2 个三角形 = 6 顶点
-        int white = ARGB.color(255, 255, 255, 255);
+        int white = FastColor.ARGB32.color(255, 255, 255, 255);
 
         float vScale = 0.5F;
         float vBase = isTop ? 0.0F : 1.0F; // 上半球从顶部(0)到中部(0.5)，下半球从底部(1.0)到中部(0.5)
@@ -619,7 +622,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
 
     public void renderSkyDisc(int skyColor) {
         VertexBufferSlice dynamicTransforms = RenderSystem.getDynamicUniforms()
-                .writeTransform(RenderSystem.getModelViewMatrix(), ARGB.vector4fFromARGB32(skyColor), new Vector3f(),
+                .writeTransform(RenderSystem.getModelViewMatrix(), new Vector4f(FastColor.ARGB32.red(skyColor) / 255.0f, FastColor.ARGB32.green(skyColor) / 255.0f, FastColor.ARGB32.blue(skyColor) / 255.0f, FastColor.ARGB32.alpha(skyColor) / 255.0f), new Vector3f(),
                         new Matrix4f());
         GpuTextureView colorTexture = Minecraft.getInstance().getMainRenderTarget().getColorTextureView();
         GpuTextureView depthTexture = Minecraft.getInstance().getMainRenderTarget().getDepthTextureView();
@@ -1071,7 +1074,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         tangent1.normalize().mul(tangent1Length);
         Vector3f tangent2 = new Vector3f(cometSkyDir).cross(tangent1).normalize().mul(tangent1Length);
 
-        int white = ARGB.color(255, 255, 255, 255);
+        int white = FastColor.ARGB32.color(255, 255, 255, 255);
         int markerVerts = 4;
         try (ByteBufferBuilder bb = ByteBufferBuilder.exactlySized(
                 markerVerts * DefaultVertexFormat.POSITION_COLOR.getVertexSize())) {
@@ -1174,7 +1177,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
                 int r = (int)((rC * fade + rE * (1f - fade)) * 255);
                 int g = (int)((gC * fade + gE * (1f - fade)) * 255);
                 int b = (int)((bC * fade + bE * (1f - fade)) * 255);
-                int color = ARGB.color(alpha, r, g, b);
+                int color = FastColor.ARGB32.color(alpha, r, g, b);
 
                 float cx = dir.x * skyHeight, cy = dir.y * skyHeight, cz = dir.z * skyHeight;
                 float ox = offsetDir.x * halfWidth, oy = offsetDir.y * halfWidth, oz = offsetDir.z * halfWidth;
@@ -1261,7 +1264,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
     }
 
     public void renderSunriseAndSunset(PoseStack poseStack, float sunAngle, int sunriseAndSunsetColor) {
-        float alpha = ARGB.alphaFloat(sunriseAndSunsetColor);
+        float alpha = FastColor.ARGB32.alpha(sunriseAndSunsetColor) / 255.0f;
         if (!(alpha <= 0.001F)) {
             poseStack.pushPose();
             poseStack.mulPose(Axis.XP.rotationDegrees(90.0F));
@@ -1272,7 +1275,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
             modelViewStack.mul(poseStack.last().pose());
             modelViewStack.scale(1.0F, 1.0F, alpha);
             VertexBufferSlice dynamicTransforms = RenderSystem.getDynamicUniforms()
-                    .writeTransform(modelViewStack, ARGB.vector4fFromARGB32(sunriseAndSunsetColor), new Vector3f(),
+                    .writeTransform(modelViewStack, new Vector4f(FastColor.ARGB32.red(sunriseAndSunsetColor) / 255.0f, FastColor.ARGB32.green(sunriseAndSunsetColor) / 255.0f, FastColor.ARGB32.blue(sunriseAndSunsetColor) / 255.0f, FastColor.ARGB32.alpha(sunriseAndSunsetColor) / 255.0f), new Vector3f(),
                             new Matrix4f());
             GpuTextureView color = Minecraft.getInstance().getMainRenderTarget().getColorTextureView();
             GpuTextureView depth = Minecraft.getInstance().getMainRenderTarget().getDepthTextureView();

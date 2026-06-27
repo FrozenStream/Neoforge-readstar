@@ -16,8 +16,10 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.util.FastColor;
 import net.minecraft.world.level.Level;
 import net.neoforged.neoforge.client.event.RegisterClientReloadListenersEvent;
+import net.neoforged.neoforge.client.event.RegisterMaterialAtlasesEvent;
 import org.joml.Vector3f;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -160,10 +162,10 @@ public class ReadStarClient {
 
             if (maxCoverage > 0.1f) {
                 float darkFactor = 1f - maxCoverage * 0.8f;
-                int r = (int) (ARGB.red(skyColor) * darkFactor);
-                int g = (int) (ARGB.green(skyColor) * darkFactor);
-                int b = (int) (ARGB.blue(skyColor) * darkFactor);
-                skyColor = ARGB.color(255, r, g, b);
+                int r = (int) (FastColor.ARGB32.red(skyColor) * darkFactor);
+                int g = (int) (FastColor.ARGB32.green(skyColor) * darkFactor);
+                int b = (int) (FastColor.ARGB32.blue(skyColor) * darkFactor);
+                skyColor = FastColor.ARGB32.color(255, r, g, b);
             }
         }
         event.getRenderState().skyRenderState.skyColor = skyColor;
@@ -174,9 +176,9 @@ public class ReadStarClient {
     }
 
     @SubscribeEvent
-    public static void registerAtlases(RegisterTextureAtlasesEvent event) {
-        event.register(new AtlasManager.AtlasConfig(CELESTIAL_ATLAS_TEXTURE, CELESTIAL_ATLAS_INFO, false));
-        event.register(new AtlasManager.AtlasConfig(STAR_ATLAS_TEXTURE, STAR_ATLAS_INFO, false));
+    public static void registerAtlases(RegisterMaterialAtlasesEvent event) {
+        event.register(CELESTIAL_ATLAS_TEXTURE, CELESTIAL_ATLAS_INFO);
+        event.register(STAR_ATLAS_TEXTURE, STAR_ATLAS_INFO);
     }
 
     @SubscribeEvent

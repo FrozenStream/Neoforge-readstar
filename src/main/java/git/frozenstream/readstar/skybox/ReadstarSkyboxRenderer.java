@@ -2,10 +2,12 @@ package git.frozenstream.readstar.skybox;
 
 import com.mojang.blaze3d.vertex.*;
 import git.frozenstream.readstar.ReadStar;
+import git.frozenstream.readstar.ReadStarClient;
 import git.frozenstream.readstar.elements.CelestialBody;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.state.level.LevelRenderState;
 import net.minecraft.client.renderer.state.level.SkyRenderState;
+import net.minecraft.client.resources.model.ModelManager;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.packs.resources.Resource;
 import net.minecraft.server.packs.resources.ResourceManager;
@@ -54,7 +56,10 @@ public class ReadstarSkyboxRenderer implements CustomSkyboxRenderer, ResourceMan
         this.stars = parseStars(resourceManager, 6.5f);
         this.brightstars = filterStars(6);
         Minecraft minecraft = Minecraft.getInstance();
-        this.skyRenderer = new ReadstarSkyRenderer(minecraft.getTextureManager(), minecraft.getAtlasManager());
+        ModelManager modelManager = minecraft.getModelManager();
+        this.skyRenderer = new ReadstarSkyRenderer(minecraft.getTextureManager(),
+            modelManager.getAtlas(ReadStarClient.CELESTIAL_ATLAS_TEXTURE),
+            modelManager.getAtlas(ReadStarClient.STAR_ATLAS_TEXTURE));
         this.skyRenderer.buildStarsBuffer(this.stars);
     }
 
