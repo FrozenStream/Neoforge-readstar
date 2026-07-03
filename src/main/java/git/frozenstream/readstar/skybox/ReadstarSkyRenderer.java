@@ -129,8 +129,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
      * 精灵路径：environment/celestial/non-luminous/{bodyName}/{phaseName}
      */
     private GpuBuffer getOrCreateNonluminousBuffer(String bodyName) {
-        return nonluminousBuffers.computeIfAbsent(bodyName,
-                name -> buildBodyBuffer(name, "non-luminous"));
+        return nonluminousBuffers.computeIfAbsent(bodyName, this::buildNonluminousBuffer);
     }
 
     /**
@@ -138,8 +137,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
      * 精灵路径：environment/celestial/luminous/{bodyName}/{phaseName}
      */
     private GpuBuffer getOrCreateLuminousBuffer(String bodyName) {
-        return luminousBuffers.computeIfAbsent(bodyName,
-                this::buildLuminousBuffer);
+        return luminousBuffers.computeIfAbsent(bodyName, this::buildLuminousBuffer);
     }
 
     /**
@@ -161,14 +159,14 @@ public class ReadstarSkyRenderer implements AutoCloseable {
      * 构建 non-luminous 天体缓冲（遍历 8 个月相）。
      * 精灵路径：environment/celestial/non-luminous/{name}/{phaseName}
      */
-    private GpuBuffer buildBodyBuffer(String name, String category) {
+    private GpuBuffer buildNonluminousBuffer(String name) {
         MoonPhase[] phases = MoonPhase.values();
         VertexFormat format = DefaultVertexFormat.POSITION_TEX;
 
         List<TextureAtlasSprite> sprites = new ArrayList<>();
         for (MoonPhase phase : phases) {
             Identifier spriteId = Identifier.fromNamespaceAndPath(ReadStar.MODID,
-                    "environment/celestial/" + category + "/" + name + "/" + phase.getSerializedName());
+                    "environment/celestial/non-luminous/" + name + "/" + phase.getSerializedName());
             TextureAtlasSprite sprite = celestialsAtlas.getSprite(spriteId);
             if (sprite != celestialsAtlas.missingSprite()) {
                 sprites.add(sprite);
@@ -179,7 +177,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
             return null;
         }
 
-        return buildQuadBuffer(name, category, sprites);
+        return buildQuadBuffer(name, "non-luminous", sprites);
     }
 
     /** 用精灵列表构建 QUAD 的 GPU 缓冲 */
@@ -196,8 +194,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
             }
             try (MeshData mesh = buf.buildOrThrow()) {
                 ReadStar.LOGGER.info("Built {} buffer for '{}': {} sprites", category, name, sprites.size());
-                return RenderSystem.getDevice().createBuffer(
-                        () -> "Body/" + name + " (" + category + ") buffer", 32, mesh.vertexBuffer());
+                return RenderSystem.getDevice().createBuffer(() -> "Body/" + name + " (" + category + ") buffer", 32, mesh.vertexBuffer());
             }
         }
     }
@@ -246,6 +243,8 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         VertexFormat format = DefaultVertexFormat.POSITION_TEX_COLOR;
         int white = ARGB.color(255, 255, 255, 255);
 
+        GpuBuffer var;
+
         try (ByteBufferBuilder bb = ByteBufferBuilder.exactlySized(4 * format.getVertexSize())) {
             BufferBuilder buf = new BufferBuilder(bb, VertexFormat.Mode.QUADS, format);
             buf.addVertex(-1.0F, 0.0F, -1.0F).setUv(sprite.getU0(), sprite.getV0()).setColor(white);
@@ -253,9 +252,11 @@ public class ReadstarSkyRenderer implements AutoCloseable {
             buf.addVertex( 1.0F, 0.0F,  1.0F).setUv(sprite.getU1(), sprite.getV1()).setColor(white);
             buf.addVertex(-1.0F, 0.0F,  1.0F).setUv(sprite.getU0(), sprite.getV1()).setColor(white);
             try (MeshData mesh = buf.buildOrThrow()) {
-                return RenderSystem.getDevice().createBuffer(() -> "Halo quad", 32, mesh.vertexBuffer());
+                var = RenderSystem.getDevice().createBuffer(() -> "Halo quad", 32, mesh.vertexBuffer());
             }
         }
+
+        return var;
     }
 
     private static GpuBuffer buildCelestialQuad(String name, TextureAtlasSprite sprite) {
@@ -298,16 +299,9 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         int totalQuads = starCount + glowStarCount;
         int totalVertices = totalQuads * 4; // QUADS 模式，每星 4 顶点
 
-        // 如果没有星星数据，返回一个空的缓冲
         if (totalVertices == 0) {
             this.starIndexCount = 0;
-            try (ByteBufferBuilder buf = ByteBufferBuilder.exactlySized(1)) {
-                BufferBuilder builder = new BufferBuilder(buf, VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX_COLOR);
-                try (MeshData mesh = builder.buildOrThrow()) {
-                    this.starBuffer = RenderSystem.getDevice().createBuffer(() -> "Stars vertex buffer (empty)", 32,
-                            mesh.vertexBuffer());
-                }
-            }
+            return;
         }
 
         var coreSize = Config.STAR_CORE_SIZE.get().floatValue();
@@ -328,8 +322,8 @@ public class ReadstarSkyRenderer implements AutoCloseable {
                     // 以 mag=1 为基准归一化，mag<1 的亮星钳位不增亮
                     float alphaF = (float) Math.pow(10.0, -0.08 * Math.max(mag - 1.0, 0.0));
                     float colorF = (float) Math.pow(10.0, -0.08 * Math.max(mag - 1.0, 0.0));
-                    int starAlpha = Math.min(255, Math.max(1, (int) (alphaF * 255.0f)));
-                    int starColor = Math.min(255, Math.max(1, (int) (colorF * 255.0f)));
+                    int starAlpha = Math.clamp((int) (alphaF * 255.0f), 1, 255);
+                    int starColor = Math.clamp((int) (colorF * 255.0f), 1, 255);
                     // 星点视大小衰减指数取 -0.3（比亮度平缓），保证暗星仍有最小可见尺寸
                     float sizeF = (float) Math.pow(10.0, -0.05 * Math.max(mag - 2.0, 0.0));
                     float starSize = Math.max(sizeF, 0.3f) * coreSize;
@@ -374,12 +368,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
             if (result == null) {
                 this.starIndexCount = 0;
                 ReadStar.LOGGER.warn("Star buffer build returned null");
-                try (ByteBufferBuilder emptyBuf = ByteBufferBuilder.exactlySized(1)) {
-                    BufferBuilder b = new BufferBuilder(emptyBuf, VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_TEX_COLOR);
-                    try (MeshData mesh = b.buildOrThrow()) {
-                        this.starBuffer = RenderSystem.getDevice().createBuffer(() -> "Stars vertex buffer (fallback)", 32, mesh.vertexBuffer());
-                    }
-                }
+                return;
             }
 
             // QUADS 模式：indexCount = vertexCount / 4 * 6
@@ -420,6 +409,8 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         float vScale = 0.5F;
         float vBase = isTop ? 0.0F : 1.0F; // 上半球从顶部(0)到中部(0.5)，下半球从底部(1.0)到中部(0.5)
         float vSign = isTop ? 1.0F : -1.0F; // 下半球 V 反向：天底→底部，地平线→中部
+
+        GpuBuffer var;
 
         try (ByteBufferBuilder bb = ByteBufferBuilder.exactlySized(vertexCount * format.getVertexSize())) {
             BufferBuilder buf = new BufferBuilder(bb, VertexFormat.Mode.TRIANGLES, format);
@@ -481,9 +472,11 @@ public class ReadstarSkyRenderer implements AutoCloseable {
             try (MeshData mesh = buf.buildOrThrow()) {
                 String label = isTop ? "Top celestial dome" : "Bottom celestial dome";
                 ReadStar.LOGGER.info("Built {} (triangles): {} cells, {} vertices", label, cells, vertexCount);
-                return RenderSystem.getDevice().createBuffer(() -> label, 32, mesh.vertexBuffer());
+                var = RenderSystem.getDevice().createBuffer(() -> label, 32, mesh.vertexBuffer());
             }
         }
+
+        return var;
     }
 
     private static GpuBuffer buildEndSky() {
