@@ -13,7 +13,6 @@ import git.frozenstream.readstar.sprite.CelestialSpriteSourceProvider;
 import git.frozenstream.readstar.sprite.MoonSpriteSource;
 import git.frozenstream.readstar.sprite.StarSpriteSource;
 import git.frozenstream.readstar.sprite.SunSpriteSource;
-import net.minecraft.client.Minecraft;
 import net.minecraft.client.resources.model.sprite.AtlasManager;
 import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.Component;
