@@ -1,3 +1,6 @@
 {
-  "parent": "readstar:block/armillary_sphere"
+  "parent": "minecraft:item/generated",
+  "textures": {
+    "layer0": "readstar:item/armillary_sphere"
+  }
 }

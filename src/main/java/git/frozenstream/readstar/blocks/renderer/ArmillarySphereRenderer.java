@@ -19,10 +19,10 @@ import org.joml.Vector3fc;
  */
 public class ArmillarySphereRenderer
         implements BlockEntityRenderer<ArmillarySphereBlockEntity, ArmillarySphereRenderState> {
-    private static final float HW = 1.5f, HH = 0.5f;
+    private static final float HW = 1.5f;
     private static final double MAX_R = 5.0e11;
     private static final float MIN_R = 0.008f;
-    private static final int ORB_SEG = 128, RING_SEG = 64;
+    private static final int ORB_SEG = 128;
 
     public ArmillarySphereRenderer(BlockEntityRendererProvider.Context ctx) {
     }
@@ -45,20 +45,6 @@ public class ArmillarySphereRenderer
         ps.translate(0.5, 0.0, 0.5);
         drawSystem(ps, col, zoom);
         ps.popPose();
-    }
-
-    // ========== 底座 ==========
-    private void drawBase(PoseStack ps, SubmitNodeCollector col) {
-        col.submitCustomGeometry(ps, RenderTypes.debugQuads(), (pose, vc) -> {
-            float rr = 1.4f, y0 = -HH + 0.02f, th = 0.04f;
-            float r = 0.55f, g = 0.47f, b = 0.14f, a = 0.85f;
-            for (int i = 0; i <= RING_SEG; i++) {
-                float ang = i / (float) RING_SEG * 2f * (float) Math.PI;
-                float c = (float) Math.cos(ang), sn = (float) Math.sin(ang);
-                vc.addVertex(pose, c * (rr + th), y0, sn * (rr + th)).setColor(r, g, b, a);
-                vc.addVertex(pose, c * (rr - th), y0 + 0.04f, sn * (rr - th)).setColor(r, g * .8f, b * .8f, a * .7f);
-            }
-        });
     }
 
     // ========== 系统 ==========
@@ -98,7 +84,10 @@ public class ArmillarySphereRenderer
             return new Vector3f();
         double sd = Math.sqrt(d / MAX_R) * HW * 0.9 * z;
         double sc = sd / d;
-        return new Vector3f((float) (p.x() * sc), (float) (p.z() * sc), (float) (p.y() * sc));
+        return new Vector3f(
+                (float) (p.x() * sc),
+                (float) (p.z() * sc),
+                (float) (p.y() * sc));
     }
 
     /** 局部映射：卫星轨道 → 父天体周围的偏移 */
@@ -132,6 +121,7 @@ public class ArmillarySphereRenderer
                 } else {
                     curr = mapGlobal(new Vector3f(phys), z);
                 }
+                curr.y += 0.5;
                 if (prev != null) {
                     float dx = curr.x() - prev.x(), dy = curr.y() - prev.y();
                     float len = (float) Math.sqrt(dx * dx + dy * dy);
@@ -156,7 +146,7 @@ public class ArmillarySphereRenderer
 
     private void drawBody(PoseStack ps, SubmitNodeCollector col, CelestialBody bd, Vector3f rp) {
         col.submitCustomGeometry(ps, RenderTypes.debugQuads(), (pose, vc) -> {
-            float rr = radius(bd.radius), x = rp.x(), y = rp.y(), z = rp.z();
+            float rr = radius(bd.radius), x = rp.x(), y = 0.5f + rp.y(), z = rp.z();
             float[] rgb = hsv(CelestialBody.getHueFloat(bd.starHSV),
                     CelestialBody.getSaturationFloat(bd.starHSV),
                     Math.min(1f, CelestialBody.getValueFloat(bd.starHSV)));
