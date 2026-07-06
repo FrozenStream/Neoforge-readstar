@@ -1,4 +1,4 @@
-package net.minecraft.world.level;
+package git.frozenstream.readstar.skybox;
 
 import com.mojang.serialization.Codec;
 import net.minecraft.util.StringRepresentable;
@@ -15,21 +15,16 @@ public enum MoonPhase implements StringRepresentable {
 
     public static final Codec<MoonPhase> CODEC = StringRepresentable.fromEnum(MoonPhase::values);
     public static final int COUNT = values().length;
-    public static final int PHASE_LENGTH = 24000;
     private final int index;
     private final String name;
 
-    private MoonPhase(int index, String name) {
+    MoonPhase(int index, String name) {
         this.index = index;
         this.name = name;
     }
 
     public int index() {
         return this.index;
-    }
-
-    public int startTick() {
-        return this.index * 24000;
     }
 
     @Override

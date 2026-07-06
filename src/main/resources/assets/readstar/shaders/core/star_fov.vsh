@@ -1,20 +1,13 @@
-#version 330
+#version 150
 
 // Position = 球面中心，Offset = Java 侧预计算的 3D billboard 偏移量。
-// FOV 通过 ProjMat 自然影响 Position 的屏幕位置，
-// Offset 乘 FovCompensation 反补以保持屏幕大小不变。
+// FovCompensation = 反补 FOV 造成的缩放，使星点屏幕大小不受 FOV 影响。
+// 由 Java 侧通过 shader.safeGetUniform("FovCompensation").set(value) 每帧注入。
 
-layout(std140) uniform DynamicTransforms {
-    mat4 ModelViewMat;
-    vec4 ColorModulator;
-    vec3 ModelOffset;
-    mat4 TextureMat;
-};
-layout(std140) uniform Projection {
-    mat4 ProjMat;
-};
-
-#define FovCompensation TextureMat[0][0]
+uniform mat4 ModelViewMat;
+uniform mat4 ProjMat;
+uniform vec4 ColorModulator;
+uniform float FovCompensation;
 
 in vec3 Position;
 in vec2 UV0;
@@ -28,5 +21,5 @@ void main() {
     vec3 worldPos = Position + Offset * FovCompensation;
     gl_Position = ProjMat * ModelViewMat * vec4(worldPos, 1.0);
     texCoord0 = UV0;
-    vertexColor = Color;
+    vertexColor = Color * ColorModulator;
 }

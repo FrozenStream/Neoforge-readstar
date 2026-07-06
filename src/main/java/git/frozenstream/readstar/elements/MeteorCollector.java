@@ -1,6 +1,6 @@
 package git.frozenstream.readstar.elements;
 
-import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceLocation;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -24,7 +24,7 @@ public class MeteorCollector {
     private final List<LaunchZone> activeZones = new ArrayList<>();
 
     /** 客户端当前所在维度，用于过滤区域 */
-    private Identifier currentDimension = Identifier.parse("minecraft:overworld");
+    private ResourceLocation currentDimension = ResourceLocation.parse("minecraft:overworld");
 
     private static final MeteorCollector INSTANCE = new MeteorCollector();
 
@@ -58,7 +58,7 @@ public class MeteorCollector {
      * 设置客户端当前维度
      * 如果维度发生变化，清空旧维度的所有流星球区域
      */
-    public void setCurrentDimension(Identifier dimensionId) {
+    public void setCurrentDimension(ResourceLocation dimensionId) {
         if (!this.currentDimension.equals(dimensionId)) {
             this.currentDimension = dimensionId;
             activeMeteors.clear();

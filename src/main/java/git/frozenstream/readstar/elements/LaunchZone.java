@@ -1,6 +1,6 @@
 package git.frozenstream.readstar.elements;
 
-import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceLocation;
 import org.joml.Vector3f;
 
 /**
@@ -13,7 +13,7 @@ import org.joml.Vector3f;
  * @param endTime     终止时间（游戏 tick），到达此时间后该区域不再生成新流星
  * @param dimensionId 维度 ID，用于区分区域所属维度
  */
-public record LaunchZone(float azimuth, Vector3f direction, float density, long endTime, Identifier dimensionId) {
+public record LaunchZone(float azimuth, Vector3f direction, float density, long endTime, ResourceLocation dimensionId) {
 
     public LaunchZone {
         direction = new Vector3f(direction);

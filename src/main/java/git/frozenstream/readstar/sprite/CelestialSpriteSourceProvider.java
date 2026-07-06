@@ -1,27 +1,5 @@
-package git.frozenstream.readstar.sprite;
-
-import git.frozenstream.readstar.ReadStar;
-import git.frozenstream.readstar.ReadStarClient;
-import net.minecraft.client.renderer.texture.atlas.sources.DirectoryLister;
-import net.minecraft.core.HolderLookup;
-import net.minecraft.data.PackOutput;
-import net.neoforged.neoforge.client.data.SpriteSourceProvider;
-
-import java.util.concurrent.CompletableFuture;
-
-public class CelestialSpriteSourceProvider extends SpriteSourceProvider {
-    public CelestialSpriteSourceProvider(PackOutput output, CompletableFuture<HolderLookup.Provider> lookupProvider) {
-        super(output, lookupProvider, ReadStar.MODID);
-    }
-
-    @Override
-    protected void gather() {
-        atlas(ReadStarClient.CELESTIAL_ATLAS_INFO)
-                .addSource(new DirectoryLister("environment/celestial", "environment/celestial/"))
-                .addSource(new MoonSpriteSource())
-                .addSource(new SunSpriteSource());
-
-        atlas(ReadStarClient.STAR_ATLAS_INFO)
-                .addSource(new StarSpriteSource());
-    }
-}
+// TODO 1.21.1: SpriteSourceProvider 类在 NeoForge 21.1.234 中不存在或位于不同包。
+// 数据生成需要适配 1.21.1 的 Provider API。
+//
+// package git.frozenstream.readstar.sprite;
+// ... (原有内容)

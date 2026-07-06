@@ -7,14 +7,14 @@ import net.minecraft.network.chat.ComponentSerialization;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
-import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceLocation;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
 /**
  * 服务端向客户端发送消息的网络包
  */
 public record ServerMessagePayload(Component message) implements CustomPacketPayload {
-    public static final Identifier ID = Identifier.fromNamespaceAndPath(ReadStar.MODID, "server_message");
+    public static final ResourceLocation ID = ResourceLocation.fromNamespaceAndPath(ReadStar.MODID, "server_message");
     public static final Type<ServerMessagePayload> TYPE = new Type<>(ID);
 
     /**

@@ -1,19 +1,20 @@
 package git.frozenstream.readstar.skybox;
 
+import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.*;
 import git.frozenstream.readstar.ReadStar;
 import git.frozenstream.readstar.ReadStarClient;
 import git.frozenstream.readstar.elements.CelestialBody;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.renderer.state.level.LevelRenderState;
-import net.minecraft.client.renderer.state.level.SkyRenderState;
+import net.minecraft.client.renderer.FogRenderer;
 import net.minecraft.client.resources.model.ModelManager;
-import net.minecraft.resources.Identifier;
+import net.minecraft.util.FastColor;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.packs.resources.Resource;
 import net.minecraft.server.packs.resources.ResourceManager;
 import net.minecraft.server.packs.resources.ResourceManagerReloadListener;
-import net.minecraft.world.level.dimension.DimensionType;
-import net.neoforged.neoforge.client.CustomSkyboxRenderer;
+
+import org.joml.Matrix4f;
 import org.joml.Matrix4fc;
 import org.joml.Vector3f;
 
@@ -24,8 +25,13 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-
-public class ReadstarSkyboxRenderer implements CustomSkyboxRenderer, ResourceManagerReloadListener {
+/**
+ * 自定义天空盒渲染器 —— 1.21.1 版本。
+ * <p>
+ * 通过 NeoForge 的 CustomSkyboxRenderer 接口注册（如果有），
+ * 或由外部手动调用 renderSky()。
+ */
+public class ReadstarSkyboxRenderer implements ResourceManagerReloadListener {
     private static final ReadstarSkyboxRenderer INSTANCE = new ReadstarSkyboxRenderer();
 
     public static ReadstarSkyboxRenderer getInstance() {
@@ -42,7 +48,6 @@ public class ReadstarSkyboxRenderer implements CustomSkyboxRenderer, ResourceMan
     public CelestialBody getObserver() { return observer; }
     public void setObserver(CelestialBody observer) { this.observer = observer; }
 
-    /** 获取当前天空渲染器实例（供 HUD 等外部调用） */
     public ReadstarSkyRenderer getSkyRenderer() {
         return skyRenderer;
     }
@@ -69,7 +74,7 @@ public class ReadstarSkyboxRenderer implements CustomSkyboxRenderer, ResourceMan
     private static List<ReadstarSkyRenderer.Star> parseStars(ResourceManager resourceManager, float maxmag) {
         List<ReadstarSkyRenderer.Star> result = new ArrayList<>();
 
-        Map<Identifier, Resource> starResources = resourceManager.listResources(
+        Map<ResourceLocation, Resource> starResources = resourceManager.listResources(
                 "stars", id -> id.getPath().endsWith(".csv"));
 
         if (starResources.isEmpty()) {
@@ -77,11 +82,10 @@ public class ReadstarSkyboxRenderer implements CustomSkyboxRenderer, ResourceMan
             return List.of();
         }
 
-        for (Map.Entry<Identifier, Resource> entry : starResources.entrySet()) {
-            Identifier resPath = entry.getKey();
+        for (Map.Entry<ResourceLocation, Resource> entry : starResources.entrySet()) {
+            ResourceLocation resPath = entry.getKey();
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(entry.getValue().open(),
                     StandardCharsets.UTF_8))) {
-                // 跳过CSV头部行
                 String header = reader.readLine();
                 if (header == null || !header.startsWith("name,")) {
                     ReadStar.LOGGER.warn("Invalid CSV header in: {}", resPath);
@@ -117,42 +121,42 @@ public class ReadstarSkyboxRenderer implements CustomSkyboxRenderer, ResourceMan
         return List.copyOf(result);
     }
 
-
     public void rebuildStarsWithMag(float mag) {
         this.stars = parseStars(Minecraft.getInstance().getResourceManager(), mag);
         this.brightstars = filterStars(6);
         this.skyRenderer.buildStarsBuffer(this.stars);
     }
 
-    private List<ReadstarSkyRenderer.Star> filterStars(float mag){
+    private List<ReadstarSkyRenderer.Star> filterStars(float mag) {
         return this.stars.stream().filter(star -> star.mag() <= mag).toList();
     }
 
-    @Override
-    public boolean renderSky(LevelRenderState levelRenderState, SkyRenderState skyRenderState, Matrix4fc modelViewMatrix, Runnable setupFog) {
+    public boolean renderSky(long gameTime, SkyRenderState skyRenderState, Matrix4fc modelViewMatrix, Matrix4f projectionMatrix, Runnable setupFog) {
         setupFog.run();
+
         SkyRenderState state = skyRenderState;
-        if (state.skybox == DimensionType.Skybox.END) {
-            skyRenderer.renderEndSky();
-            if (state.endFlashIntensity > 1.0e-5f) {
-                PoseStack poseStack = new PoseStack();
-                skyRenderer.renderEndFlash(poseStack, state.endFlashIntensity, state.endFlashXAngle, state.endFlashYAngle);
-            }
-        } else {
-            PoseStack poseStack = new PoseStack();
-            // 1. 天空底色 — 天球图纹理（跟随 observer 天球坐标系旋转）
-            skyRenderer.renderSkyDisc(state.skyColor);
-            skyRenderer.renderCosmicBackground(state.skyColor, this.observer, state.starBrightness);
-            skyRenderer.renderSunriseAndSunset(poseStack, state.sunAngle, state.sunriseAndSunsetColor);
-            // 2. 天体 + 星星
-            skyRenderer.renderCelestialAndStars(poseStack, state.rainBrightness, state.starBrightness, this.observer, levelRenderState.gameTime);
-            // ===== METEORS (在 frameQuat 框架内渲染) =====
-            skyRenderer.buildAndRenderMeteors(poseStack, state.starBrightness, levelRenderState.gameTime);
-            if (state.shouldRenderDarkDisc) {
-                skyRenderer.renderDarkDisc();
-            }
+
+        RenderSystem.enableBlend();
+        RenderSystem.depthMask(false);
+        PoseStack poseStack = new PoseStack();
+        // 1. 天空底色 — modelViewMatrix 来自 skybox 参数，非 RenderSystem
+        skyRenderer.renderSkyDisc(skyRenderState.skyColor, modelViewMatrix, projectionMatrix);
+        skyRenderer.renderCosmicBackground(state.skyColor, this.observer, state.starBrightness, modelViewMatrix, projectionMatrix);
+        skyRenderer.renderSunriseAndSunset(poseStack, state.sunAngle, state.sunriseAndSunsetColor, modelViewMatrix, projectionMatrix);
+        // 2. 天体 + 星星
+        skyRenderer.renderCelestialAndStars(poseStack, state.rainBrightness, state.starBrightness, this.observer, gameTime, modelViewMatrix, projectionMatrix);
+        // ===== METEORS (在 frameQuat 框架内渲染) =====
+        skyRenderer.buildAndRenderMeteors(poseStack, state.starBrightness, gameTime, modelViewMatrix, projectionMatrix);
+        if (state.shouldRenderDarkDisc) {
+            skyRenderer.renderDarkDisc(modelViewMatrix, projectionMatrix);
         }
-        
+
+        // 1.21.1的渲染确实就是一坨狗屎
+        RenderSystem.disableBlend();
+        RenderSystem.defaultBlendFunc();
+        RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
+        RenderSystem.depthMask(true);
+
         return true;
     }
 }

@@ -64,8 +64,6 @@ public class ReadStar {
     public static final DeferredBlock<ArmillarySphereBlock> ARMILLARY_SPHERE_BLOCK = BLOCKS.register(
             "armillary_sphere",
             () -> new ArmillarySphereBlock(BlockBehaviour.Properties.of()
-                    .setId(ResourceKey.create(Registries.BLOCK,
-                            ResourceLocation.fromNamespaceAndPath(MODID, "armillary_sphere")))
                     .strength(3.5f, 6.0f)
                     .requiresCorrectToolForDrops()
                     .sound(SoundType.COPPER)
@@ -84,7 +82,8 @@ public class ReadStar {
             "armillary_sphere",
             () -> new BlockEntityType<>(
                     ArmillarySphereBlockEntity::new,
-                    ARMILLARY_SPHERE_BLOCK.get()
+                    java.util.Set.of(ARMILLARY_SPHERE_BLOCK.get()),
+                    null
             ));
 
     // The constructor for the mod class is the first code that is run when your mod is loaded.

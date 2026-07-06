@@ -8,7 +8,7 @@ import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
-import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceLocation;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
 /**
@@ -16,7 +16,7 @@ import net.neoforged.neoforge.network.handling.IPayloadContext;
  * 直接传输原始 JSON 字符串，由客户端负责解析
  */
 public record CelestialSystemPayload(String jsonData) implements CustomPacketPayload {
-    public static final Identifier ID = Identifier.fromNamespaceAndPath(ReadStar.MODID, "planet_system");
+    public static final ResourceLocation ID = ResourceLocation.fromNamespaceAndPath(ReadStar.MODID, "planet_system");
     public static final Type<CelestialSystemPayload> TYPE = new Type<>(ID);
     
     private static final Gson GSON = new Gson();

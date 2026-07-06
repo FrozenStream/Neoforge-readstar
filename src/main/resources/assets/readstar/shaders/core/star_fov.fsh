@@ -1,11 +1,6 @@
-#version 330
+#version 150
 
-layout(std140) uniform DynamicTransforms {
-    mat4 ModelViewMat;
-    vec4 ColorModulator;
-    vec3 ModelOffset;
-    mat4 TextureMat;
-};
+// ColorModulator 已在顶点着色器中乘入 vertexColor，片元着色器无需再乘。
 
 uniform sampler2D Sampler0;
 
@@ -19,5 +14,5 @@ void main() {
     if (color.a == 0.0) {
         discard;
     }
-    fragColor = color * ColorModulator;
+    fragColor = color;
 }

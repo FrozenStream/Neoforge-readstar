@@ -2,7 +2,7 @@ package git.frozenstream.readstar.network;
 
 import git.frozenstream.readstar.ReadStar;
 import git.frozenstream.readstar.elements.LaunchZone;
-import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -33,7 +33,7 @@ public class MeteorLauncher {
     private static final float ZONE_DENSITY = 0.1f;
 
     /** 按维度存储活跃启动区域 */
-    private final Map<Identifier, List<LaunchZone>> activeZonesByDimension = new HashMap<>();
+    private final Map<ResourceLocation, List<LaunchZone>> activeZonesByDimension = new HashMap<>();
 
     private static MeteorLauncher INSTANCE;
 
@@ -48,7 +48,7 @@ public class MeteorLauncher {
     /**
      * 获取指定维度的所有活跃启动区域副本（用于新玩家同步）
      */
-    public List<LaunchZone> getActiveZonesForDimension(Identifier dimensionId) {
+    public List<LaunchZone> getActiveZonesForDimension(ResourceLocation dimensionId) {
         List<LaunchZone> zones = activeZonesByDimension.get(dimensionId);
         if (zones == null)
             return List.of();
@@ -64,7 +64,7 @@ public class MeteorLauncher {
 
         long gameTime = serverLevel.getGameTime();
         // 通过资源注册表获取维度 ID
-        Identifier dimensionId = serverLevel.dimension().identifier();
+        ResourceLocation dimensionId = serverLevel.dimension().location();
 
         // 按维度获取或初始化区域列表
         List<LaunchZone> zones = activeZonesByDimension.computeIfAbsent(dimensionId, k -> new ArrayList<>());
@@ -101,7 +101,7 @@ public class MeteorLauncher {
         if (!(event.getEntity() instanceof ServerPlayer serverPlayer))
             return;
 
-        Identifier dimId = serverPlayer.level().dimension().identifier();
+        ResourceLocation dimId = serverPlayer.level().dimension().location();
         syncZonesToPlayer(serverPlayer, dimId);
     }
 
@@ -113,13 +113,13 @@ public class MeteorLauncher {
         if (!(event.getEntity() instanceof ServerPlayer serverPlayer))
             return;
 
-        syncZonesToPlayer(serverPlayer, event.getTo().identifier());
+        syncZonesToPlayer(serverPlayer, event.getTo().location());
     }
 
     /**
      * 向指定玩家同步指定维度的所有活跃启动区域
      */
-    private void syncZonesToPlayer(ServerPlayer player, Identifier dimensionId) {
+    private void syncZonesToPlayer(ServerPlayer player, ResourceLocation dimensionId) {
         ReadStar.LOGGER.debug("Send Zones to player");
         List<LaunchZone> zones = getActiveZonesForDimension(dimensionId);
         if (zones.isEmpty())

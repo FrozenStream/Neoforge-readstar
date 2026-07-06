@@ -5,20 +5,19 @@ import git.frozenstream.readstar.blocks.entity.ArmillarySphereBlockEntity;
 import git.frozenstream.readstar.elements.CelestialBody;
 import git.frozenstream.readstar.elements.CelestialBodyManager;
 import git.frozenstream.readstar.elements.Orbit;
-import net.minecraft.client.renderer.SubmitNodeCollector;
+import net.minecraft.client.renderer.MultiBufferSource;
+import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.blockentity.BlockEntityRenderer;
 import net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider;
-import net.minecraft.client.renderer.rendertype.RenderTypes;
-import net.minecraft.client.renderer.state.level.CameraRenderState;
-import net.minecraft.client.Minecraft;
 import org.joml.Vector3f;
 import org.joml.Vector3fc;
 
 /**
- * 浑天仪 BER —— 在 3×3×1 区域内绘制整个恒星系
+ * 浑天仪 BER — 在 3×3×1 区域内绘制整个恒星系。
+ * <p>
+ * 1.21.1 版本：使用经典 BlockEntityRenderer<T> 接口 + MultiBufferSource。
  */
-public class ArmillarySphereRenderer
-        implements BlockEntityRenderer<ArmillarySphereBlockEntity, ArmillarySphereRenderState> {
+public class ArmillarySphereRenderer implements BlockEntityRenderer<ArmillarySphereBlockEntity> {
     private static final float HW = 1.5f, HH = 0.5f;
     private static final double MAX_R = 5.0e11;
     private static final float MIN_R = 0.008f;
@@ -28,66 +27,39 @@ public class ArmillarySphereRenderer
     }
 
     @Override
-    public ArmillarySphereRenderState createRenderState() {
-        return new ArmillarySphereRenderState();
-    }
-
-    @Override
-    public void submit(ArmillarySphereRenderState s, PoseStack ps,
-            SubmitNodeCollector col, CameraRenderState cam) {
-        // 从 level 获取 BE 数据（extractRenderState 不在 BER 接口中，需手动获取）
-        var level = Minecraft.getInstance().level;
-        float zoom = 1f;
-        if (level != null && level.getBlockEntity(s.blockPos) instanceof ArmillarySphereBlockEntity be) {
-            zoom = be.getZoomLevel();
-        }
+    public void render(ArmillarySphereBlockEntity be, float partialTick, PoseStack ps,
+            MultiBufferSource bufferSource, int packedLight, int packedOverlay) {
+        float zoom = be.getZoomLevel();
         ps.pushPose();
         ps.translate(0.5, 0.0, 0.5);
-        drawSystem(ps, col, zoom);
+        drawSystem(ps, bufferSource, zoom);
         ps.popPose();
     }
 
-    // ========== 底座 ==========
-    private void drawBase(PoseStack ps, SubmitNodeCollector col) {
-        col.submitCustomGeometry(ps, RenderTypes.debugQuads(), (pose, vc) -> {
-            float rr = 1.4f, y0 = -HH + 0.02f, th = 0.04f;
-            float r = 0.55f, g = 0.47f, b = 0.14f, a = 0.85f;
-            for (int i = 0; i <= RING_SEG; i++) {
-                float ang = i / (float) RING_SEG * 2f * (float) Math.PI;
-                float c = (float) Math.cos(ang), sn = (float) Math.sin(ang);
-                vc.addVertex(pose, c * (rr + th), y0, sn * (rr + th)).setColor(r, g, b, a);
-                vc.addVertex(pose, c * (rr - th), y0 + 0.04f, sn * (rr - th)).setColor(r, g * .8f, b * .8f, a * .7f);
-            }
-        });
-    }
-
     // ========== 系统 ==========
-    private void drawSystem(PoseStack ps, SubmitNodeCollector col, float z) {
+    private void drawSystem(PoseStack ps, MultiBufferSource bufferSource, float z) {
         CelestialBody root = CelestialBodyManager.getInstance().Root;
         if (root == null || root.children.isEmpty())
             return;
-        // 递归渲染，子天体相对于父天体做局部映射
-        drawWithParent(ps, col, root, new Vector3f(0, 0, 0), z);
+        drawWithParent(ps, bufferSource, root, new Vector3f(0, 0, 0), z);
     }
 
     /** 递归：渲染 p 的所有子天体，renderPos 为父天体已映射的渲染位置 */
-    private void drawWithParent(PoseStack ps, SubmitNodeCollector col, CelestialBody p, Vector3f parentRenderPos,
-            float z) {
+    private void drawWithParent(PoseStack ps, MultiBufferSource bufferSource, CelestialBody p,
+            Vector3f parentRenderPos, float z) {
         if (p.children == null)
             return;
         for (CelestialBody c : p.children) {
             Vector3f rp;
             if (p == CelestialBody.Root || p.parent == CelestialBody.Root) {
-                // Root 的子天体（恒星）和恒星的行星：用全局映射
                 rp = mapGlobal(c.position, z);
             } else {
-                // 行星的卫星等：相对于父天体的偏移，用局部线性缩放
                 Vector3f offset = new Vector3f(c.position).sub(p.position);
                 rp = mapLocal(offset, parentRenderPos);
             }
-            drawOrbit(ps, col, c, parentRenderPos, z);
-            drawBody(ps, col, c, rp);
-            drawWithParent(ps, col, c, rp, z);
+            drawOrbit(ps, bufferSource, c, parentRenderPos, z);
+            drawBody(ps, bufferSource, c, rp);
+            drawWithParent(ps, bufferSource, c, rp, z);
         }
     }
 
@@ -106,7 +78,6 @@ public class ArmillarySphereRenderer
         double d = Math.sqrt(offset.x() * offset.x() + offset.y() * offset.y() + offset.z() * offset.z());
         if (d < 1e-11)
             return new Vector3f(parentPos);
-        // 局部缩放：最大卫星轨道 ~4e8 m → 0.08 方块
         double localScale = 0.08 / 4e8;
         return new Vector3f(
                 parentPos.x() + (float) (offset.x() * localScale),
@@ -114,85 +85,91 @@ public class ArmillarySphereRenderer
                 parentPos.z() + (float) (offset.y() * localScale));
     }
 
-    /** 用细四边形模拟轨道线（等偏近点角采样，避免高偏心率轨道折断） */
-    private void drawOrbit(PoseStack ps, SubmitNodeCollector col, CelestialBody child, Vector3f parentRenderPos, float z) {
+    /** 用细四边形模拟轨道线（等偏近点角采样） */
+    private void drawOrbit(PoseStack ps, MultiBufferSource bufferSource, CelestialBody child,
+            Vector3f parentRenderPos, float z) {
         if (child.orbit == null || child.orbit.semiMajorAxis() == 0) return;
         Orbit o = child.orbit;
         boolean isLocal = !(child.parent == CelestialBody.Root || child.parent.parent == CelestialBody.Root);
-        col.submitCustomGeometry(ps, RenderTypes.debugQuads(), (pose, vc) -> {
-            float lineW = 0.001f;
-            Vector3f prev = null;
-            for (int i = 0; i <= ORB_SEG; i++) {
-                // 等偏近点角采样：E 均匀分布在 [0, 2π)，保证轨道线处处平滑
-                double E = 2.0 * Math.PI * i / ORB_SEG;
-                Vector3fc phys = o.calPositionFromE(E);
-                Vector3f curr;
-                if (isLocal) {
-                    curr = mapLocal(new Vector3f(phys), parentRenderPos);
-                } else {
-                    curr = mapGlobal(new Vector3f(phys), z);
-                }
-                if (prev != null) {
-                    float dx = curr.x() - prev.x(), dy = curr.y() - prev.y();
-                    float len = (float) Math.sqrt(dx * dx + dy * dy);
-                    if (len > 1e-6f) {
-                        float px = -dy / len * lineW, py = dx / len * lineW;
-                        // 第一遍：平行地面（XY 平面内垂直方向）
-                        vc.addVertex(pose, prev.x()-px, prev.y()-py, prev.z()).setColor(0.3f,0.4f,0.5f,0.5f);
-                        vc.addVertex(pose, prev.x()+px, prev.y()+py, prev.z()).setColor(0.3f,0.4f,0.5f,0.5f);
-                        vc.addVertex(pose, curr.x()+px, curr.y()+py, curr.z()).setColor(0.3f,0.4f,0.5f,0.5f);
-                        vc.addVertex(pose, curr.x()-px, curr.y()-py, curr.z()).setColor(0.3f,0.4f,0.5f,0.5f);
-                        // 第二遍：垂直地面（Z 方向，立体交叉）
-                        vc.addVertex(pose, prev.x(), prev.y(), prev.z()-lineW).setColor(0.25f,0.35f,0.45f,0.5f);
-                        vc.addVertex(pose, prev.x(), prev.y(), prev.z()+lineW).setColor(0.25f,0.35f,0.45f,0.5f);
-                        vc.addVertex(pose, curr.x(), curr.y(), curr.z()+lineW).setColor(0.25f,0.35f,0.45f,0.5f);
-                        vc.addVertex(pose, curr.x(), curr.y(), curr.z()-lineW).setColor(0.25f,0.35f,0.45f,0.5f);
-                    }
-                }
-                prev = curr;
+
+        VertexConsumer vc = bufferSource.getBuffer(RenderType.debugQuads());
+        float lineW = 0.001f;
+        Vector3f prev = null;
+        for (int i = 0; i <= ORB_SEG; i++) {
+            double E = 2.0 * Math.PI * i / ORB_SEG;
+            Vector3fc phys = o.calPositionFromE(E);
+            Vector3f curr;
+            if (isLocal) {
+                curr = mapLocal(new Vector3f(phys), parentRenderPos);
+            } else {
+                curr = mapGlobal(new Vector3f(phys), z);
             }
-        });
+            if (prev != null) {
+                float dx = curr.x() - prev.x(), dy = curr.y() - prev.y();
+                float len = (float) Math.sqrt(dx * dx + dy * dy);
+                if (len > 1e-6f) {
+                    float px = -dy / len * lineW, py = dx / len * lineW;
+                    // 第一遍：平行地面
+                    addVertex(vc, ps, prev.x() - px, prev.y() - py, prev.z(), 0.3f, 0.4f, 0.5f, 0.5f);
+                    addVertex(vc, ps, prev.x() + px, prev.y() + py, prev.z(), 0.3f, 0.4f, 0.5f, 0.5f);
+                    addVertex(vc, ps, curr.x() + px, curr.y() + py, curr.z(), 0.3f, 0.4f, 0.5f, 0.5f);
+                    addVertex(vc, ps, curr.x() - px, curr.y() - py, curr.z(), 0.3f, 0.4f, 0.5f, 0.5f);
+                    // 第二遍：垂直地面
+                    addVertex(vc, ps, prev.x(), prev.y(), prev.z() - lineW, 0.25f, 0.35f, 0.45f, 0.5f);
+                    addVertex(vc, ps, prev.x(), prev.y(), prev.z() + lineW, 0.25f, 0.35f, 0.45f, 0.5f);
+                    addVertex(vc, ps, curr.x(), curr.y(), curr.z() + lineW, 0.25f, 0.35f, 0.45f, 0.5f);
+                    addVertex(vc, ps, curr.x(), curr.y(), curr.z() - lineW, 0.25f, 0.35f, 0.45f, 0.5f);
+                }
+            }
+            prev = curr;
+        }
     }
 
-    private void drawBody(PoseStack ps, SubmitNodeCollector col, CelestialBody bd, Vector3f rp) {
-        col.submitCustomGeometry(ps, RenderTypes.debugQuads(), (pose, vc) -> {
-            float rr = radius(bd.radius), x = rp.x(), y = rp.y(), z = rp.z();
-            float[] rgb = hsv(CelestialBody.getHueFloat(bd.starHSV),
-                    CelestialBody.getSaturationFloat(bd.starHSV),
-                    Math.min(1f, CelestialBody.getValueFloat(bd.starHSV)));
-            float r = rgb[0], g = rgb[1], bl = rgb[2];
-            float al = bd.luminance > 0 ? 0.9f : 0.85f;
+    private void drawBody(PoseStack ps, MultiBufferSource bufferSource, CelestialBody bd, Vector3f rp) {
+        VertexConsumer vc = bufferSource.getBuffer(RenderType.debugQuads());
+        float rr = radius(bd.radius), x = rp.x(), y = rp.y(), z = rp.z();
+        float[] rgb = hsv(CelestialBody.getHueFloat(bd.starHSV),
+                CelestialBody.getSaturationFloat(bd.starHSV),
+                Math.min(1f, CelestialBody.getValueFloat(bd.starHSV)));
+        float r = rgb[0], g = rgb[1], bl = rgb[2];
+        float al = bd.luminance > 0 ? 0.9f : 0.85f;
 
-            // 小立方体 —— 6面不同亮度，呈现3D立体感
-            float h = rr;
-            quad(pose, vc, x - h, y + h, z - h, x + h, y + h, z - h, x + h, y + h, z + h, x - h, y + h, z + h, r, g, bl,
-                    al, 1.0f);
-            quad(pose, vc, x - h, y - h, z + h, x + h, y - h, z + h, x + h, y - h, z - h, x - h, y - h, z - h, r, g, bl,
-                    al, 0.45f);
-            quad(pose, vc, x - h, y - h, z + h, x + h, y - h, z + h, x + h, y + h, z + h, x - h, y + h, z + h, r, g, bl,
-                    al, 0.8f);
-            quad(pose, vc, x + h, y - h, z - h, x - h, y - h, z - h, x - h, y + h, z - h, x + h, y + h, z - h, r, g, bl,
-                    al, 0.55f);
-            quad(pose, vc, x + h, y - h, z + h, x + h, y - h, z - h, x + h, y + h, z - h, x + h, y + h, z + h, r, g, bl,
-                    al, 0.9f);
-            quad(pose, vc, x - h, y - h, z - h, x - h, y - h, z + h, x - h, y + h, z + h, x - h, y + h, z - h, r, g, bl,
-                    al, 0.65f);
-        });
+        float h = rr;
+        quad(ps, vc, x - h, y + h, z - h, x + h, y + h, z - h, x + h, y + h, z + h, x - h, y + h, z + h, r, g, bl, al, 1.0f);
+        quad(ps, vc, x - h, y - h, z + h, x + h, y - h, z + h, x + h, y - h, z - h, x - h, y - h, z - h, r, g, bl, al, 0.45f);
+        quad(ps, vc, x - h, y - h, z + h, x + h, y - h, z + h, x + h, y + h, z + h, x - h, y + h, z + h, r, g, bl, al, 0.8f);
+        quad(ps, vc, x + h, y - h, z - h, x - h, y - h, z - h, x - h, y + h, z - h, x + h, y + h, z - h, r, g, bl, al, 0.55f);
+        quad(ps, vc, x + h, y - h, z + h, x + h, y - h, z - h, x + h, y + h, z - h, x + h, y + h, z + h, r, g, bl, al, 0.9f);
+        quad(ps, vc, x - h, y - h, z - h, x - h, y - h, z + h, x - h, y + h, z + h, x - h, y + h, z - h, r, g, bl, al, 0.65f);
     }
 
-    private static void quad(PoseStack.Pose pose, VertexConsumer vc,
+    private static void quad(PoseStack ps, VertexConsumer vc,
             float x1, float y1, float z1, float x2, float y2, float z2,
             float x3, float y3, float z3, float x4, float y4, float z4,
             float r, float g, float b, float a, float bright) {
-        vc.addVertex(pose, x1, y1, z1).setColor(r * bright, g * bright, b * bright, a);
-        vc.addVertex(pose, x2, y2, z2).setColor(r * bright, g * bright, b * bright, a);
-        vc.addVertex(pose, x3, y3, z3).setColor(r * bright, g * bright, b * bright, a);
-        vc.addVertex(pose, x4, y4, z4).setColor(r * bright, g * bright, b * bright, a);
+        PoseStack.Pose pose = ps.last();
+        addVertex(vc, pose, x1, y1, z1, r * bright, g * bright, b * bright, a);
+        addVertex(vc, pose, x2, y2, z2, r * bright, g * bright, b * bright, a);
+        addVertex(vc, pose, x3, y3, z3, r * bright, g * bright, b * bright, a);
+        addVertex(vc, pose, x4, y4, z4, r * bright, g * bright, b * bright, a);
     }
 
-    /** 立方根映射：体积 → 线尺寸，比对数保留更多真实比例 */
+    /** 1.21.1 VertexConsumer 使用 int 颜色 */
+    private static void addVertex(VertexConsumer vc, PoseStack.Pose pose,
+            float x, float y, float z, float r, float g, float b, float a) {
+        vc.addVertex(pose, x, y, z)
+          .setColor((int)(r * 255), (int)(g * 255), (int)(b * 255), (int)(a * 255));
+    }
+
+    private static void addVertex(VertexConsumer vc, PoseStack pose,
+            float x, float y, float z, float r, float g, float b, float a) {
+        vc.addVertex(pose.last(), x, y, z)
+          .setColor((int)(r * 255), (int)(g * 255), (int)(b * 255), (int)(a * 255));
+    }
+
+    /** 立方根映射：体积 → 线尺寸 */
     private float radius(double pr) {
-        double cr = Math.cbrt(pr); // 立方根 → 线尺寸代理
+        double cr = Math.cbrt(pr);
         double t = cr / 10000;
         return Math.max(MIN_R, (float) t);
     }
@@ -209,12 +186,5 @@ public class ArmillarySphereRenderer
             case 4 -> new float[] { tt, p, v };
             default -> new float[] { v, p, q };
         };
-    }
-
-    static float rng(long s, int i) {
-        long h = s ^ ((long) i * 0x9E3779B97F4A7C15L);
-        h = (h ^ (h >>> 30)) * 0xBF58476D1CE4E5B9L;
-        h = (h ^ (h >>> 27)) * 0x94D049BB133111EBL;
-        return ((h ^ (h >>> 31)) & 0x7FFFFFFF) / (float) 0x7FFFFFFF;
     }
 }
