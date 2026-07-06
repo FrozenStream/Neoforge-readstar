@@ -37,7 +37,6 @@ import git.frozenstream.readstar.network.MeteorLauncher;
 import git.frozenstream.readstar.network.NetworkHelper;
 import git.frozenstream.readstar.network.CelestialReloader;
 import git.frozenstream.readstar.network.CelestialSystemPayload;
-import git.frozenstream.readstar.command.TestMessageCommand;
 import net.neoforged.neoforge.network.PacketDistributor;
 
 // The value here should match an entry in the META-INF/neoforge.mods.toml file
@@ -165,13 +164,5 @@ public class ReadStar {
                 LOGGER.info("Sent cached planet system data to player: {}", serverPlayer.getName().getString());
             }
         }
-    }
-
-    /**
-     * 注册命令
-     */
-    @SubscribeEvent
-    public void onRegisterCommands(RegisterCommandsEvent event) {
-        TestMessageCommand.register(event.getDispatcher());
     }
 }

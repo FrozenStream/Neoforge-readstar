@@ -12,11 +12,11 @@ public class Config {
     // ========== 渲染参数 ==========
 
     public static final ModConfigSpec.DoubleValue STAR_CORE_SIZE = BUILDER
-            .comment("Star core quad size multiplier (base size before brightness scaling). Default: 0.648")
+            .comment("Star core quad size multiplier (base size before brightness scaling). Default: 0.75")
             .defineInRange("starCoreSize", 0.75, 0.01, 10.0);
 
     public static final ModConfigSpec.DoubleValue STAR_GLOW_SIZE = BUILDER
-            .comment("Star glow quad size multiplier for bright stars (mag < 2.0). Default: 1.5")
+            .comment("Star glow quad size multiplier for bright stars (mag < 2.0). Default: 2")
             .defineInRange("starGlowSize", 2, 0.01, 10.0);
 
     public static final ModConfigSpec.DoubleValue STAR_FOV_COMPENSATION_STRENGTH = BUILDER
