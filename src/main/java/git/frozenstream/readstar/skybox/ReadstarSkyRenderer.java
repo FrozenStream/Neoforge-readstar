@@ -19,16 +19,12 @@ import git.frozenstream.readstar.elements.CelestialBody;
 import git.frozenstream.readstar.elements.CelestialBodyManager;
 import git.frozenstream.readstar.elements.Meteor;
 import git.frozenstream.readstar.elements.MeteorCollector;
-import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.util.FastColor;
 import net.minecraft.util.Mth;
-import net.minecraft.world.level.dimension.DimensionType;
 import org.joml.*;
 
 import java.lang.Math;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -57,10 +53,6 @@ public class ReadstarSkyRenderer implements AutoCloseable {
     private final VertexBuffer topCelestialSphereBuffer;
     private final VertexBuffer bottomCelestialSphereBuffer;
     private int starIndexCount;
-
-    // TODO 1.21.1: 自定义顶点格式不能依赖 ReadstarRenderPipelines（该文件已注释）。
-    // VertexFormatElement.register() 可能在此版本中不存在——星星渲染暂时禁用。
-    // 如需恢复，请查阅 NeoForge 21.1.234 的自定义顶点元素 API。
 
     /**
      * 天球星表数据记录，存储从 stars.json 解析的原始星数据，可复用。
@@ -1024,9 +1016,6 @@ public class ReadstarSkyRenderer implements AutoCloseable {
                 VertexBuffer.unbind();
 
                 RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
-
-                
-                
                 buffer.close();
             }
         }
@@ -1110,6 +1099,9 @@ public class ReadstarSkyRenderer implements AutoCloseable {
 
                 RenderSystem.setShaderColor(1, 1, 1, 1);
                 RenderSystem.setShader(GameRenderer::getPositionColorShader);
+                RenderSystem.enableBlend();
+                RenderSystem.blendFuncSeparate(GlStateManager.SourceFactor.SRC_ALPHA, GlStateManager.DestFactor.ONE, GlStateManager.SourceFactor.ONE, GlStateManager.DestFactor.ZERO);
+
                 ShaderInstance ribbonShader = RenderSystem.getShader();
 
                 buffer.bind();
