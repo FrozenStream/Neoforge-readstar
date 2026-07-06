@@ -3,6 +3,7 @@ package git.frozenstream.readstar.skybox;
 import com.mojang.blaze3d.vertex.*;
 import git.frozenstream.readstar.ReadStar;
 import git.frozenstream.readstar.elements.CelestialBody;
+import git.frozenstream.readstar.elements.Star;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.state.level.LevelRenderState;
 import net.minecraft.client.renderer.state.level.SkyRenderState;
@@ -32,8 +33,8 @@ public class ReadstarSkyboxRenderer implements CustomSkyboxRenderer, ResourceMan
 
     private ReadstarSkyRenderer skyRenderer = null;
     private CelestialBody observer;
-    private List<ReadstarSkyRenderer.Star> stars;
-    public List<ReadstarSkyRenderer.Star> brightstars;
+    private List<Star> stars;
+    public List<Star> brightstars;
 
     private ReadstarSkyboxRenderer() {}
 
@@ -61,8 +62,8 @@ public class ReadstarSkyboxRenderer implements CustomSkyboxRenderer, ResourceMan
     /**
      * 扫描 stars/ 目录下所有 .csv 文件，合并解析星表数据，返回不可变列表。
      */
-    private static List<ReadstarSkyRenderer.Star> parseStars(ResourceManager resourceManager, float maxmag) {
-        List<ReadstarSkyRenderer.Star> result = new ArrayList<>();
+    private static List<Star> parseStars(ResourceManager resourceManager, float maxmag) {
+        List<Star> result = new ArrayList<>();
 
         Map<Identifier, Resource> starResources = resourceManager.listResources(
                 "stars", id -> id.getPath().endsWith(".csv"));
@@ -100,7 +101,7 @@ public class ReadstarSkyboxRenderer implements CustomSkyboxRenderer, ResourceMan
                     int color = Integer.parseUnsignedInt(parts[5]);
                     if (mag > maxmag)
                         continue;
-                    result.add(new ReadstarSkyRenderer.Star(name, new Vector3f(px, py, pz).normalize(), mag, color));
+                    result.add(new Star(name, new Vector3f(px, py, pz).normalize(), mag, color));
                 }
                 ReadStar.LOGGER.info("Parsed {} stars from {}", result.size() - before, resPath);
             } catch (Exception e) {
@@ -119,7 +120,7 @@ public class ReadstarSkyboxRenderer implements CustomSkyboxRenderer, ResourceMan
         this.skyRenderer.buildStarsBuffer(this.stars);
     }
 
-    private List<ReadstarSkyRenderer.Star> filterStars(float mag){
+    private List<Star> filterStars(float mag){
         return this.stars.stream().filter(star -> star.mag() <= mag).toList();
     }
 
