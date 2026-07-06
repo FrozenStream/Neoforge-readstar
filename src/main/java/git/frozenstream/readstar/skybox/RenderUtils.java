@@ -68,6 +68,36 @@ public class RenderUtils {
         MemoryUtil.memPutFloat(ptr + OFF_OFF + 8, oz);
     }
 
+    // ==================== HSV 工具方法（从 CelestialBody 迁移） ====================
+
+    /** 打包 HSV → int（各分量 0~255） */
+    public static int packHSV(int hue, int saturation, int value) {
+        return ((hue & 0xFF) << 16) | ((saturation & 0xFF) << 8) | (value & 0xFF);
+    }
+
+    /** 打包 HSV → int（各分量 0.0~1.0） */
+    public static int packHSV(float hue, float saturation, float value) {
+        return packHSV((int) (hue * 255), (int) (saturation * 255), (int) (value * 255));
+    }
+
+    /** 提取 Hue（0~255） */
+    public static int getHue(int hsv) { return (hsv >> 16) & 0xFF; }
+
+    /** 提取 Saturation（0~255） */
+    public static int getSaturation(int hsv) { return (hsv >> 8) & 0xFF; }
+
+    /** 提取 Value（0~255） */
+    public static int getValue(int hsv) { return hsv & 0xFF; }
+
+    /** 提取 Hue（0.0~1.0） */
+    public static float getHueFloat(int hsv) { return getHue(hsv) / 255f; }
+
+    /** 提取 Saturation（0.0~1.0） */
+    public static float getSaturationFloat(int hsv) { return getSaturation(hsv) / 255f; }
+
+    /** 提取 Value（0.0~1.0） */
+    public static float getValueFloat(int hsv) { return getValue(hsv) / 255f; }
+
     /**
      * HSV → RGB 转换。
      * @param hue 色相 (0.0~1.0)

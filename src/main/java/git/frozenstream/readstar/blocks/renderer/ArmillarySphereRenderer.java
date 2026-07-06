@@ -5,6 +5,7 @@ import git.frozenstream.readstar.blocks.entity.ArmillarySphereBlockEntity;
 import git.frozenstream.readstar.elements.CelestialBody;
 import git.frozenstream.readstar.elements.CelestialBodyManager;
 import git.frozenstream.readstar.elements.Orbit;
+import git.frozenstream.readstar.skybox.RenderUtils;
 import net.minecraft.client.renderer.SubmitNodeCollector;
 import net.minecraft.client.renderer.blockentity.BlockEntityRenderer;
 import net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider;
@@ -147,9 +148,9 @@ public class ArmillarySphereRenderer
     private void drawBody(PoseStack ps, SubmitNodeCollector col, CelestialBody bd, Vector3f rp) {
         col.submitCustomGeometry(ps, RenderTypes.debugQuads(), (pose, vc) -> {
             float rr = radius(bd.radius), x = rp.x(), y = 0.5f + rp.y(), z = rp.z();
-            float[] rgb = hsv(CelestialBody.getHueFloat(bd.starHSV),
-                    CelestialBody.getSaturationFloat(bd.starHSV),
-                    Math.min(1f, CelestialBody.getValueFloat(bd.starHSV)));
+            float[] rgb = hsv(RenderUtils.getHueFloat(bd.starHSV),
+                    RenderUtils.getSaturationFloat(bd.starHSV),
+                    Math.min(1f, RenderUtils.getValueFloat(bd.starHSV)));
             float r = rgb[0], g = rgb[1], bl = rgb[2];
             float al = bd.luminance > 0 ? 0.9f : 0.85f;
 

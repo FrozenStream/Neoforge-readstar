@@ -185,7 +185,7 @@ public class CelestialBodyManager {
      */
     private void parseAndAddCelestialBody(String name, JsonObject celestialBodyData, CelestialBody parent) {
         try {
-            name = name.toLowerCase();
+            name = name.toLowerCase().replace(' ', '_');
             // ========== 1. 解析天体属性 ==========
             double mass = celestialBodyData.get(KEY_MASS).getAsDouble();
             double radius = celestialBodyData.get(KEY_RADIUS).getAsDouble();
