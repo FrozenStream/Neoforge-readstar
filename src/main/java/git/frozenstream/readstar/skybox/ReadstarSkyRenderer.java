@@ -23,6 +23,7 @@ import git.frozenstream.readstar.elements.CelestialBody;
 import git.frozenstream.readstar.elements.CelestialBodyManager;
 import git.frozenstream.readstar.elements.Meteor;
 import git.frozenstream.readstar.elements.MeteorCollector;
+import git.frozenstream.readstar.elements.Star;
 import net.minecraft.client.Camera;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
@@ -42,8 +43,8 @@ import net.minecraft.world.attribute.EnvironmentAttributes;
 import net.minecraft.world.level.MoonPhase;
 import net.minecraft.world.level.dimension.DimensionType;
 import org.joml.*;
+import org.joml.Math;
 
-import java.lang.Math;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -54,20 +55,8 @@ import java.util.OptionalInt;
 
 
 public class ReadstarSkyRenderer implements AutoCloseable {
-    // ⚠️ DO NOT REMOVE: 以下注释掉的常量是原版参考值，保留以供对比和维护参考
-    // private static final Identifier SUN_SPRITE = Identifier.fromNamespaceAndPath("minecraft", "environment/celestial/sun");
-    private static final Identifier END_FLASH_SPRITE = Identifier.fromNamespaceAndPath("minecraft", "environment/celestial/end_flash");
+   private static final Identifier END_FLASH_SPRITE = Identifier.fromNamespaceAndPath("minecraft", "environment/celestial/end_flash");
     private static final Identifier END_SKY_LOCATION = Identifier.withDefaultNamespace("textures/environment/end_sky.png");
-    // private static final float SKY_DISC_RADIUS = 512.0F;
-    // private static final int SKY_VERTICES = 10;
-    // private static final float SUN_SIZE = 30.0F;
-    // private static final float SUN_HEIGHT = 100.0F;
-    // private static final float MOON_SIZE = 20.0F;
-    // private static final float MOON_HEIGHT = 100.0F;
-    // private static final int SUNRISE_STEPS = 16;
-    // private static final int END_SKY_QUAD_COUNT = 6;
-    // private static final float END_FLASH_HEIGHT = 100.0F;
-    // private static final float END_FLASH_SCALE = 60.0F;
     private static final Identifier CELESTIAL_SPHERE_LOCATION = Identifier.fromNamespaceAndPath(ReadStar.MODID, "textures/environment/test_dual_blurred_qtr.png");
     private final TextureAtlas celestialsAtlas;
     private final TextureAtlas starsAtlas;
@@ -76,7 +65,6 @@ public class ReadstarSkyRenderer implements AutoCloseable {
     private final GpuBuffer topSkyBuffer;
     private final GpuBuffer bottomSkyBuffer;
     private final GpuBuffer endSkyBuffer;
-    // private final GpuBuffer sunBuffer;
     private final Map<String, GpuBuffer> nonluminousBuffers = new HashMap<>();
     private final Map<String, GpuBuffer> luminousBuffers = new HashMap<>();
     private final GpuBuffer sunriseBuffer;
@@ -89,14 +77,6 @@ public class ReadstarSkyRenderer implements AutoCloseable {
     private final GpuBuffer bottomCelestialSphereBuffer;
     private int starIndexCount;
 
-    /**
-     * 天球星表数据记录，存储从 stars.json 解析的原始星数据，可复用。
-     * @param name      恒星名称（如 "Sirius", "Canopus"）
-     * @param direction 天球上的单位方向向量（归一化）
-     * @param mag      视星等（数值越小越亮）
-     * @param color     颜色索引（0-6，映射到 environment/stars/color_* 纹理）
-     */
-    public record Star(String name, Vector3f direction, float mag, int color) {}
 
     public ReadstarSkyRenderer(TextureManager textureManager, AtlasManager atlasManager, RenderTarget renderTarget) {
         this.celestialsAtlas = atlasManager.getAtlasOrThrow(ReadStarClient.CELESTIAL_ATLAS_INFO);
@@ -288,17 +268,10 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         VertexFormat format = ReadstarRenderPipelines.POSITION_TEX_COLOR_OFFSET;
         int vtxSize = format.getVertexSize();
 
-        // 预计算元素偏移量
-        // Format: Position(RGB32=12) + UV0(RG32=8) + Color(RGBA8=4) + Offset(RGB32=12) = 36 bytes
-        int posOffset = 0;
-        int uvOffset = 12;
-        int colorOffset = 20;
-        int offsetOffset = 24;
-
         // 预计光晕星数量（mag < 2.0 才有光晕）
         int glowStarCount = 0;
         for (Star star : stars) {
-            if (star.mag < 2.0f)
+            if (star.mag() < 2.0f)
                 glowStarCount++;
         }
         int totalQuads = starCount + glowStarCount;
@@ -316,28 +289,28 @@ public class ReadstarSkyRenderer implements AutoCloseable {
 
             for (Star star : stars) {
                 try {
-                    float mag = star.mag;
-                    int color = star.color;
+                    float mag = star.mag();
+                    int color = star.color();
 
                     // 球面位置（着色器内部计算 billboard 朝向）
-                    Vector3f center = new Vector3f(star.direction).normalize(100.0F);
+                    Vector3f center = new Vector3f(star.direction()).normalize(100.0F);
 
                     // 逐星亮度：普森(Pogson)星等-亮度公式 —— 人眼感知模型
                     // Δ5mag = 100× 亮度比 → brightness ∝ 10^(-0.4 × mag)
                     // 以 mag=1 为基准归一化，mag<1 的亮星钳位不增亮
-                    float alphaF = (float) Math.pow(10.0, -0.08 * Math.max(mag - 1.0, 0.0));
-                    float colorF = (float) Math.pow(10.0, -0.08 * Math.max(mag - 1.0, 0.0));
+                    float alphaF = (float) java.lang.Math.pow(10.0, -0.08 * Math.max(mag - 1.0, 0.0));
+                    float colorF = (float) java.lang.Math.pow(10.0, -0.08 * Math.max(mag - 1.0, 0.0));
                     int starAlpha = Math.clamp((int) (alphaF * 255.0f), 1, 255);
                     int starColor = Math.clamp((int) (colorF * 255.0f), 1, 255);
                     // 星点视大小衰减指数取 -0.3（比亮度平缓），保证暗星仍有最小可见尺寸
-                    float sizeF = (float) Math.pow(10.0, -0.05 * Math.max(mag - 2.0, 0.0));
+                    float sizeF = (float) java.lang.Math.pow(10.0, -0.05 * Math.max(mag - 2.0, 0.0));
                     float starSize = Math.max(sizeF, 0.3f) * coreSize;
 
                     // ---- 核心 quad（所有星）：4 顶点共享 center，Offset 区分角落 ----
                     Identifier coreId = Identifier.fromNamespaceAndPath(ReadStar.MODID, "environment/stars/color_" + color);
                     TextureAtlasSprite coreSprite = this.starsAtlas.getSprite(coreId);
 
-                    RenderUtils.writeStarQuad(buf, vtxSize, posOffset, uvOffset, colorOffset, offsetOffset,
+                    RenderUtils.writeStarQuad(buf, vtxSize,
                             center,
                             coreSprite.getU0(), coreSprite.getV0(), coreSprite.getU1(), coreSprite.getV1(),
                             starColor, starAlpha,
@@ -356,10 +329,10 @@ public class ReadstarSkyRenderer implements AutoCloseable {
                         Identifier glowId = Identifier.fromNamespaceAndPath(ReadStar.MODID, "environment/stars/" + glowLevel + "_" + color);
                         TextureAtlasSprite glowSprite = this.starsAtlas.getSprite(glowId);
 
-                        RenderUtils.writeStarQuad(buf, vtxSize, posOffset, uvOffset, colorOffset, offsetOffset,
+                        RenderUtils.writeStarQuad(buf, vtxSize,
                                 center,
                                 glowSprite.getU0(), glowSprite.getV0(), glowSprite.getU1(), glowSprite.getV1(),
-                                255, starAlpha,
+                                starColor, starAlpha,
                                 glowSize);
                     }
 
@@ -525,40 +498,6 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         return var10;
     }
 
-    /** 银道坐标系 → 赤道坐标系 (J2000) 预旋转。
-     *  天球纹理以银心为中心、银道面为赤道，需先旋转到赤道系再叠加 observer 旋转。 */
-    private static final Quaternionf GALACTIC_TO_EQUATORIAL = buildGalacticToEquatorial();
-
-    private static Quaternionf buildGalacticToEquatorial() {
-        // 北银极在赤道系 (J2000): RA=192.85948°, Dec=+27.12825°
-        float ngpRA = (float) Math.toRadians(192.85948);
-        float ngpDec = (float) Math.toRadians(27.12825);
-        Vector3f ngp = new Vector3f(
-                (float)(Math.cos(ngpDec) * Math.cos(ngpRA)),
-                (float) Math.sin(ngpDec),
-                (float)(Math.cos(ngpDec) * Math.sin(ngpRA)));
-
-        // 银心在赤道系 (J2000): RA=266.4051°, Dec=-28.9362°
-        float gcRA = (float) Math.toRadians(266.4051);
-        float gcDec = (float) Math.toRadians(-28.9362);
-        Vector3f gc = new Vector3f(
-                (float)(Math.cos(gcDec) * Math.cos(gcRA)),
-                (float) Math.sin(gcDec),
-                (float)(Math.cos(gcDec) * Math.sin(gcRA)));
-
-        // 银道坐标系正交基在赤道系中的表示
-        // 天穹本地：X(-1,0,0)=银心方向, Y(0,1,0)=北银极, Z(0,0,1)=Y×X
-        // R × v_local = v_equatorial → 列向量为基向量在赤道系的坐标
-        Vector3f zGal = new Vector3f(ngp).cross(gc).normalize(); // Z = NGP × GC（正交补全）
-
-        // R = [ -gc | ngp | zGal ]  （因为 X_local=(-1,0,0) → R×(-1,0,0) = gc → col0 = -gc）
-        Matrix3f rot = new Matrix3f();
-        rot.setColumn(0, new Vector3f(-gc.x, -gc.y, -gc.z));
-        rot.setColumn(1, new Vector3f(ngp));
-        rot.setColumn(2, zGal);
-
-        return rot.getUnnormalizedRotation(new Quaternionf());
-    }
 
     /**
      * 渲染完整天球图，银道→赤道预旋转 + observer 天球坐标系旋转（仅旋转，不平移）。
@@ -572,7 +511,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
             poseStack.mulPose(frameQuat);
         }
         // 2. 银道→赤道预旋转（第一步：顶点从银道→赤道）
-        poseStack.mulPose(GALACTIC_TO_EQUATORIAL);
+        poseStack.mulPose(RenderUtils.GALACTIC_TO_EQUATORIAL);
 
         Matrix4fStack modelViewStack = RenderSystem.getModelViewStack();
         modelViewStack.pushMatrix();
@@ -709,11 +648,9 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         poseStack.pushPose();
 
         // ==== 计算有效星光亮度 ====
-        // 有理函数映射 [0, ∞) → [0, 1): s·x/(s·x+1)
-        float s = 20.0f;
+        float s = 10.0f;
         float effectiveBrightness = (s * starBrightness) / (s * starBrightness + 1.0f);
         float fov = Minecraft.getInstance().gameRenderer.mainCamera().getFov();
-        // FOV 缩小时提升亮度（星星更大但各项发光不变 → 需要更亮）
         double brightnessFactor = 1.0 + Config.STAR_FOV_BRIGHTNESS_STRENGTH.get() * Math.max(0.0, (70.0 - fov) / 70.0);
         effectiveBrightness = effectiveBrightness * (float)brightnessFactor;
 
@@ -824,7 +761,6 @@ public class ReadstarSkyRenderer implements AutoCloseable {
 
     /**
      * 渲染所有活跃流星：头部 billboard 方块 + 尾迹矩形
-     * 使用 STARS 管线绘制，不需外部贴图
      */
     public void buildAndRenderMeteors(PoseStack poseStack, float starBrightness, long gameTime) {
         var meteors = MeteorCollector.getInstance().activeMeteors;
@@ -1027,13 +963,6 @@ public class ReadstarSkyRenderer implements AutoCloseable {
             renderOneComet(cometPos, sunPos, orbitNormal, observerPos, rainBrightness, poseStack, gameTick);
         }
 
-        // ==== 测试彗星：太阳侧面近日点，确保可见 ====
-        {
-            Vector3f testComet = new Vector3f(0, 4.5e10f, 4.5e10f);
-            Vector3f testSun = new Vector3f(0, 0, 0);
-            Vector3f testOrbitNormal = new Vector3f(0, 1, 0);  // 默认轨道法线
-            renderOneComet(testComet, testSun, testOrbitNormal, observerPos, rainBrightness, poseStack, gameTick);
-        }
     }
 
     /** 为单颗彗星渲染尘埃尾 + 离子尾 + 标记 */
@@ -1362,6 +1291,10 @@ public class ReadstarSkyRenderer implements AutoCloseable {
      */
     public void renderHud(GuiGraphicsExtractor g, CelestialBody observer, List<Star> stars) {
         Minecraft mc = Minecraft.getInstance();
+        Font font = mc.font;
+        int dimColor = 0xCC888888;
+        int brightColor = 0xCCFFFFFF;
+
         if (mc.player == null) return;
         if (!mc.player.isScoping()) return; // 仅在使用望远镜时显示
         if (observer == null) return;
@@ -1373,37 +1306,34 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         Vector3f celestialDir = invQuat.transform(
                 new Vector3f((float) worldLook.x, (float) worldLook.y, (float) worldLook.z));
 
+        g.text(font, String.format("player look: %+.1f, %+.1f, %+.1f", worldLook.x, worldLook.y, worldLook.z), 10, 40, dimColor);
+        g.text(font, String.format("celestialDir: %+.1f, %+.1f, %+.1f", celestialDir.x, celestialDir.y, celestialDir.z), 10, 70, dimColor);
+
+
         // 查找视线最近的恒星
         Star nearestStar = null;
-        float bestDot = -2.0f;
+        float bestDot = -1.0f;
         for (Star s : stars) {
-            float dot = celestialDir.dot(s.direction);
+            float dot = celestialDir.dot(s.direction());
             if (dot > bestDot) {
                 bestDot = dot;
                 nearestStar = s;
             }
         }
-
-        Font font = mc.font;
-        int dimColor = 0xCC888888;
-        int brightColor = 0xCCFFFFFF;
+        if (nearestStar == null) return;
 
         // 左上角：高度角
         float altitude = (float) Math.toDegrees(Math.asin(Math.max(-1.0, Math.min(1.0, celestialDir.y))));
         g.text(font, String.format("Alt: %+.1f°", altitude), 10, 10, dimColor);
 
-        // 对准某颗星时（夹角 < 2°），在星星的屏幕位置绘制跟随 tooltip
-        float threshold = (float) Math.cos(Math.toRadians(1.0));
-        if (nearestStar == null || bestDot <= threshold) return;
-
         // 星星方向变换到世界空间
         Quaternionf localToWorld = observer.getLocalToWorldQuaternion();
         Vector3f starWorldDir = new Quaternionf(localToWorld).transform(
-                new Vector3f(nearestStar.direction));
+                new Vector3f(nearestStar.direction()));
 
         // 射线遮挡检测：玩家视线被地形/建筑挡住 → 不显示 tooltip
         Vec3 eyePos = mc.player.getEyePosition(1.0f);
-        Vec3 rayEnd = eyePos.add(starWorldDir.x * 256, starWorldDir.y * 256, starWorldDir.z * 256);
+        Vec3 rayEnd = eyePos.add(starWorldDir.x * 32, starWorldDir.y * 32, starWorldDir.z * 32);
         net.minecraft.world.level.ClipContext ctx = new net.minecraft.world.level.ClipContext(
                 eyePos, rayEnd,
                 net.minecraft.world.level.ClipContext.Block.VISUAL,
@@ -1430,7 +1360,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         int screenH = mc.getWindow().getGuiScaledHeight();
         float aspectRatio = (float) screenW / screenH;
         float vFovRad = (float) Math.toRadians(fov);
-        float hFovRad = 2f * (float) Math.atan(Math.tan(vFovRad / 2) * aspectRatio);
+        float hFovRad = 2f * (float) java.lang.Math.atan(Math.tan(vFovRad / 2) * aspectRatio);
 
         float hAngle = (float) Math.atan2(dotR, dotF);
         float vAngle = (float) Math.atan2(dotU, dotF);
@@ -1441,8 +1371,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         int screenY = (int) (cy - vAngle / (vFovRad / 2f) * cy);
 
         // 在星星上方绘制 tooltip，避免遮挡
-        Component tip = Component.translatable("hud.readstar.star_tooltip",
-                nearestStar.name, nearestStar.mag);
+        Component tip = Component.translatable("hud.readstar.star_tooltip", nearestStar.name(), nearestStar.mag());
         int textW = font.width(tip.getString());
         int tipY = screenY - font.lineHeight - 5; // 星星上方
         g.textWithBackdrop(font, tip, screenX - textW / 2, tipY, textW, brightColor);

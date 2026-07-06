@@ -22,6 +22,44 @@
         "initialMeanAnomaly": 0.0
       },
       "children": {
+        "Mercury": {
+          "mass": 3.3011e23,
+          "radius": 2.4397e6,
+          "luminance": 0,
+          "unstableDirtySnowball": false,
+          "hasAtmosphere": false,
+          "atmosphereHSV": 0,
+          "starHSV": 1973790,
+          "axis": [ 0.0, 0.0, 0.0 ],
+          "orbit": {
+            "semiMajorAxis": 5.791e10,
+            "eccentricity": 0.2056,
+            "inclination": 0.1223,
+            "argumentOfPeriapsis": 0.0,
+            "longitudeOfAscendingNode": 0.843,
+            "initialMeanAnomaly": 0.0
+          },
+          "children": {}
+        },
+        "Venus": {
+          "mass": 4.8675e24,
+          "radius": 6.0518e6,
+          "luminance": 0,
+          "unstableDirtySnowball": false,
+          "hasAtmosphere": true,
+          "atmosphereHSV": 3952840,
+          "starHSV": 2636980,
+          "axis": [ 0.0, 0.0, 0.0 ],
+          "orbit": {
+            "semiMajorAxis": 1.082e11,
+            "eccentricity": 0.0068,
+            "inclination": 0.0592,
+            "argumentOfPeriapsis": 0.0,
+            "longitudeOfAscendingNode": 1.338,
+            "initialMeanAnomaly": 0.0
+          },
+          "children": {}
+        },
         "Earth": {
           "mass": 6.0e24,
           "radius": 6.371e6,
@@ -30,11 +68,7 @@
           "hasAtmosphere": true,
           "atmosphereHSV": 9738751,
           "starHSV": 9732275,
-          "axis": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "axis": [ 0.0, 0.0, 0.0 ],
           "orbit": {
             "semiMajorAxis": 1.496e11,
             "eccentricity": 0.0,
@@ -52,11 +86,7 @@
               "hasAtmosphere": false,
               "atmosphereHSV": 0,
               "starHSV": 1707468,
-              "axis": [
-                0.0,
-                0.0,
-                0.5
-              ],
+              "axis": [ 0.0, 0.0, 0.5 ],
               "orbit": {
                 "semiMajorAxis": 3.844e8,
                 "eccentricity": 0.0,
@@ -77,11 +107,7 @@
           "hasAtmosphere": true,
           "atmosphereHSV": 1336835,
           "starHSV": 1356697,
-          "axis": [
-            0.0,
-            0.0,
-            0.0
-          ],
+          "axis": [ 0.0, 0.0, 0.0 ],
           "orbit": {
             "semiMajorAxis": 2.278e11,
             "eccentricity": 0.09341,
@@ -90,7 +116,296 @@
             "longitudeOfAscendingNode": 0.865,
             "initialMeanAnomaly": 0.0
           },
-          "children": {}
+          "children": {
+            "Phobos": {
+              "mass": 1.06e16,
+              "radius": 1.1e4,
+              "luminance": 0,
+              "unstableDirtySnowball": false,
+              "hasAtmosphere": false,
+              "atmosphereHSV": 0,
+              "starHSV": 3289650,
+              "axis": [ 0.0, 0.0, 0.0 ],
+              "orbit": {
+                "semiMajorAxis": 9.376e6,
+                "eccentricity": 0.0151,
+                "inclination": 0.0283,
+                "argumentOfPeriapsis": 0.0,
+                "longitudeOfAscendingNode": 0.0,
+                "initialMeanAnomaly": 0.0
+              },
+              "children": {}
+            },
+            "Deimos": {
+              "mass": 1.48e15,
+              "radius": 6.2e3,
+              "luminance": 0,
+              "unstableDirtySnowball": false,
+              "hasAtmosphere": false,
+              "atmosphereHSV": 0,
+              "starHSV": 3092271,
+              "axis": [ 0.0, 0.0, 0.0 ],
+              "orbit": {
+                "semiMajorAxis": 2.346e7,
+                "eccentricity": 0.0002,
+                "inclination": 0.0473,
+                "argumentOfPeriapsis": 0.0,
+                "longitudeOfAscendingNode": 0.0,
+                "initialMeanAnomaly": 0.0
+              },
+              "children": {}
+            }
+          }
+        },
+        "Jupiter": {
+          "mass": 1.8982e27,
+          "radius": 6.9911e7,
+          "luminance": 0,
+          "unstableDirtySnowball": false,
+          "hasAtmosphere": true,
+          "atmosphereHSV": 1997020,
+          "starHSV": 1840424,
+          "axis": [ 0.0, 0.0, 0.0 ],
+          "orbit": {
+            "semiMajorAxis": 7.786e11,
+            "eccentricity": 0.0484,
+            "inclination": 0.0228,
+            "argumentOfPeriapsis": 0.0,
+            "longitudeOfAscendingNode": 1.754,
+            "initialMeanAnomaly": 0.0
+          },
+          "children": {
+            "Io": {
+              "mass": 8.93e22,
+              "radius": 1.821e6,
+              "luminance": 0,
+              "unstableDirtySnowball": false,
+              "hasAtmosphere": false,
+              "atmosphereHSV": 0,
+              "starHSV": 1973790,
+              "axis": [ 0.0, 0.0, 0.0 ],
+              "orbit": {
+                "semiMajorAxis": 4.217e8,
+                "eccentricity": 0.0041,
+                "inclination": 0.0131,
+                "argumentOfPeriapsis": 0.0,
+                "longitudeOfAscendingNode": 0.0,
+                "initialMeanAnomaly": 0.0
+              },
+              "children": {}
+            },
+            "Europa": {
+              "mass": 4.80e22,
+              "radius": 1.560e6,
+              "luminance": 0,
+              "unstableDirtySnowball": false,
+              "hasAtmosphere": false,
+              "atmosphereHSV": 0,
+              "starHSV": 13881522,
+              "axis": [ 0.0, 0.0, 0.0 ],
+              "orbit": {
+                "semiMajorAxis": 6.712e8,
+                "eccentricity": 0.0094,
+                "inclination": 0.0097,
+                "argumentOfPeriapsis": 0.0,
+                "longitudeOfAscendingNode": 0.0,
+                "initialMeanAnomaly": 0.0
+              },
+              "children": {}
+            },
+            "Ganymede": {
+              "mass": 1.48e23,
+              "radius": 2.634e6,
+              "luminance": 0,
+              "unstableDirtySnowball": false,
+              "hasAtmosphere": false,
+              "atmosphereHSV": 0,
+              "starHSV": 11184810,
+              "axis": [ 0.0, 0.0, 0.0 ],
+              "orbit": {
+                "semiMajorAxis": 1.070e9,
+                "eccentricity": 0.0013,
+                "inclination": 0.0034,
+                "argumentOfPeriapsis": 0.0,
+                "longitudeOfAscendingNode": 0.0,
+                "initialMeanAnomaly": 0.0
+              },
+              "children": {}
+            },
+            "Callisto": {
+              "mass": 1.08e23,
+              "radius": 2.410e6,
+              "luminance": 0,
+              "unstableDirtySnowball": false,
+              "hasAtmosphere": false,
+              "atmosphereHSV": 0,
+              "starHSV": 8553090,
+              "axis": [ 0.0, 0.0, 0.0 ],
+              "orbit": {
+                "semiMajorAxis": 1.883e9,
+                "eccentricity": 0.0074,
+                "inclination": 0.0085,
+                "argumentOfPeriapsis": 0.0,
+                "longitudeOfAscendingNode": 0.0,
+                "initialMeanAnomaly": 0.0
+              },
+              "children": {}
+            }
+          }
+        },
+        "Saturn": {
+          "mass": 5.6834e26,
+          "radius": 5.8232e7,
+          "luminance": 0,
+          "unstableDirtySnowball": false,
+          "hasAtmosphere": true,
+          "atmosphereHSV": 2972370,
+          "starHSV": 2767142,
+          "axis": [ 0.0, 0.0, 0.0 ],
+          "orbit": {
+            "semiMajorAxis": 1.434e12,
+            "eccentricity": 0.0539,
+            "inclination": 0.0435,
+            "argumentOfPeriapsis": 0.0,
+            "longitudeOfAscendingNode": 1.983,
+            "initialMeanAnomaly": 0.0
+          },
+          "children": {
+            "Enceladus": {
+              "mass": 1.08e20,
+              "radius": 2.521e5,
+              "luminance": 0,
+              "unstableDirtySnowball": false,
+              "hasAtmosphere": false,
+              "atmosphereHSV": 0,
+              "starHSV": 15921906,
+              "axis": [ 0.0, 0.0, 0.0 ],
+              "orbit": {
+                "semiMajorAxis": 2.380e8,
+                "eccentricity": 0.0000,
+                "inclination": 0.0003,
+                "argumentOfPeriapsis": 0.0,
+                "longitudeOfAscendingNode": 0.0,
+                "initialMeanAnomaly": 0.0
+              },
+              "children": {}
+            },
+            "Titan": {
+              "mass": 1.345e23,
+              "radius": 2.575e6,
+              "luminance": 0,
+              "unstableDirtySnowball": false,
+              "hasAtmosphere": true,
+              "atmosphereHSV": 6623748,
+              "starHSV": 15132390,
+              "axis": [ 0.0, 0.0, 0.0 ],
+              "orbit": {
+                "semiMajorAxis": 1.222e9,
+                "eccentricity": 0.0288,
+                "inclination": 0.0065,
+                "argumentOfPeriapsis": 0.0,
+                "longitudeOfAscendingNode": 0.0,
+                "initialMeanAnomaly": 0.0
+              },
+              "children": {}
+            }
+          }
+        },
+        "Uranus": {
+          "mass": 8.6810e25,
+          "radius": 2.5362e7,
+          "luminance": 0,
+          "unstableDirtySnowball": false,
+          "hasAtmosphere": true,
+          "atmosphereHSV": 12632520,
+          "starHSV": 11513776,
+          "axis": [ 0.0, 0.0, 0.0 ],
+          "orbit": {
+            "semiMajorAxis": 2.871e12,
+            "eccentricity": 0.0473,
+            "inclination": 0.0130,
+            "argumentOfPeriapsis": 0.0,
+            "longitudeOfAscendingNode": 1.288,
+            "initialMeanAnomaly": 0.0
+          },
+          "children": {
+            "Titania": {
+              "mass": 3.40e21,
+              "radius": 7.889e5,
+              "luminance": 0,
+              "unstableDirtySnowball": false,
+              "hasAtmosphere": false,
+              "atmosphereHSV": 0,
+              "starHSV": 13487565,
+              "axis": [ 0.0, 0.0, 0.0 ],
+              "orbit": {
+                "semiMajorAxis": 4.359e8,
+                "eccentricity": 0.0011,
+                "inclination": 0.0070,
+                "argumentOfPeriapsis": 0.0,
+                "longitudeOfAscendingNode": 0.0,
+                "initialMeanAnomaly": 0.0
+              },
+              "children": {}
+            },
+            "Oberon": {
+              "mass": 3.01e21,
+              "radius": 7.614e5,
+              "luminance": 0,
+              "unstableDirtySnowball": false,
+              "hasAtmosphere": false,
+              "atmosphereHSV": 0,
+              "starHSV": 11119020,
+              "axis": [ 0.0, 0.0, 0.0 ],
+              "orbit": {
+                "semiMajorAxis": 5.835e8,
+                "eccentricity": 0.0014,
+                "argumentOfPeriapsis": 0.0,
+                "longitudeOfAscendingNode": 0.0,
+                "initialMeanAnomaly": 0.0
+              },
+              "children": {}
+            }
+          }
+        },
+        "Neptune": {
+          "mass": 1.0241e26,
+          "radius": 2.4622e7,
+          "luminance": 0,
+          "unstableDirtySnowball": false,
+          "hasAtmosphere": true,
+          "atmosphereHSV": 14500212,
+          "starHSV": 13369556,
+          "axis": [ 0.0, 0.0, 0.0 ],
+          "orbit": {
+            "semiMajorAxis": 4.495e12,
+            "eccentricity": 0.0086,
+            "inclination": 0.0309,
+            "argumentOfPeriapsis": 0.0,
+            "longitudeOfAscendingNode": 2.299,
+            "initialMeanAnomaly": 0.0
+          },
+          "children": {
+            "Triton": {
+              "mass": 2.14e22,
+              "radius": 1.353e6,
+              "luminance": 0,
+              "unstableDirtySnowball": false,
+              "hasAtmosphere": true,
+              "atmosphereHSV": 11911848,
+              "starHSV": 9868950,
+              "axis": [ 0.0, 0.0, 0.0 ],
+              "orbit": {
+                "semiMajorAxis": 3.547e8,
+                "eccentricity": 0.0000,
+                "inclination": 2.958,
+                "argumentOfPeriapsis": 0.0,
+                "longitudeOfAscendingNode": 0.0,
+                "initialMeanAnomaly": 0.0
+              },
+              "children": {}
+            }
+          }
         },
         "Halley": {
           "mass": 2.2e14,
@@ -100,11 +415,7 @@
           "hasAtmosphere": false,
           "atmosphereHSV": 0,
           "starHSV": 2034944,
-          "axis": [
-            0.0,
-            0.0,
-            1.0
-          ],
+          "axis": [ 0.0, 0.0, 1.0 ],
           "orbit": {
             "semiMajorAxis": 2.667e11,
             "eccentricity": 0.967,
