@@ -5,6 +5,7 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import git.frozenstream.readstar.Config;
 import git.frozenstream.readstar.ReadStar;
+import net.minecraft.resources.Identifier;
 import net.minecraft.util.Mth;
 import org.joml.Vector3f;
 
@@ -28,8 +29,17 @@ public class CelestialBodyManager {
     }
     
     private final Map<String, CelestialBody> celestialBodyTreeMap = new TreeMap<>();
+    private final Map<Identifier, String> dimensionMap = new HashMap<>();
     public final CelestialBody Root = CelestialBody.Root;
-    
+
+    /**
+     * 获取维度→天体路径的映射表
+     * @return 不可变视图的 dimensionMap
+     */
+    public Map<Identifier, String> getDimensionMap() {
+        return Collections.unmodifiableMap(dimensionMap);
+    }
+
     // 私有构造函数，防止外部实例化
     private CelestialBodyManager() {
     }
@@ -128,16 +138,31 @@ public class CelestialBodyManager {
         try {
             // 步骤1：清空现有数据
             celestialBodyTreeMap.clear();
+            dimensionMap.clear();
             Root.children.clear();
-            
-            // 步骤2：获取 System 根节点
+
+            // 步骤2：解析维度映射表
+            JsonObject dimMapObj = jsonData.getAsJsonObject("dimensionMap");
+            if (dimMapObj != null) {
+                for (Map.Entry<String, JsonElement> entry : dimMapObj.entrySet()) {
+                    Identifier dimId = Identifier.parse(entry.getKey());
+                    if (entry.getValue().isJsonNull()) {
+                        dimensionMap.put(dimId, null);
+                    } else {
+                        dimensionMap.put(dimId, entry.getValue().getAsString());
+                    }
+                }
+                ReadStar.LOGGER.info("CelestialBodyManager: Loaded {} dimension mappings", dimensionMap.size());
+            }
+
+            // 步骤3：获取 System 根节点
             JsonObject systemObj = jsonData.getAsJsonObject(KEY_SYSTEM);
             if (systemObj == null) {
                 ReadStar.LOGGER.error("CelestialBodyManager: No 'System' object found in JSON data");
                 return;
             }
             
-            // 步骤3：递归解析所有顶层天体
+            // 步骤4：递归解析所有顶层天体
             for (Map.Entry<String, JsonElement> entry : systemObj.entrySet()) {
                 parseAndAddCelestialBody(entry.getKey(), entry.getValue().getAsJsonObject(), null);
             }
