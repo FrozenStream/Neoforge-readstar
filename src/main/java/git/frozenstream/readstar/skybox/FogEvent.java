@@ -16,10 +16,15 @@ public class FogEvent {
         float h = RenderUtils.getHueFloat(observer.atmosphereHSV);
         float s = RenderUtils.getSaturationFloat(observer.atmosphereHSV);
         float v = RenderUtils.getValueFloat(observer.atmosphereHSV);
-        float[] rgb = RenderUtils.hsvToRgb(h, s, v);
+        float[] atmRGB = RenderUtils.hsvToRgb(h, s, v);
 
-        event.setRed(rgb[0]);
-        event.setGreen(rgb[1]);
-        event.setBlue(rgb[2]);
+        // 与原有 fog 颜色混合，大气为主体，原有 fog 为染色
+        float origR = event.getRed();
+        float origG = event.getGreen();
+        float origB = event.getBlue();
+        float blend = v * 0.2f;
+        event.setRed(atmRGB[0] * blend + origR * (1f - blend));
+        event.setGreen(atmRGB[1] * blend + origG * (1f - blend));
+        event.setBlue(atmRGB[2] * blend + origB * (1f - blend));
     }
 }
