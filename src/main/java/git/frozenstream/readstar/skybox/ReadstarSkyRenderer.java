@@ -53,11 +53,13 @@ import java.util.Optional;
 import java.util.OptionalDouble;
 import java.util.OptionalInt;
 
-
 public class ReadstarSkyRenderer implements AutoCloseable {
-   private static final Identifier END_FLASH_SPRITE = Identifier.fromNamespaceAndPath("minecraft", "environment/celestial/end_flash");
-    private static final Identifier END_SKY_LOCATION = Identifier.withDefaultNamespace("textures/environment/end_sky.png");
-    private static final Identifier CELESTIAL_SPHERE_LOCATION = Identifier.fromNamespaceAndPath(ReadStar.MODID, "textures/environment/test_dual_blurred_qtr.png");
+    private static final Identifier END_FLASH_SPRITE = Identifier.fromNamespaceAndPath("minecraft",
+            "environment/celestial/end_flash");
+    private static final Identifier END_SKY_LOCATION = Identifier
+            .withDefaultNamespace("textures/environment/end_sky.png");
+    private static final Identifier CELESTIAL_SPHERE_LOCATION = Identifier.fromNamespaceAndPath(ReadStar.MODID,
+            "textures/environment/test_dual_blurred_qtr.png");
     private final TextureAtlas celestialsAtlas;
     private final TextureAtlas starsAtlas;
     private final RenderTarget renderTarget;
@@ -70,13 +72,13 @@ public class ReadstarSkyRenderer implements AutoCloseable {
     private final GpuBuffer sunriseBuffer;
     private final GpuBuffer endFlashBuffer;
     private final GpuBuffer haloBuffer;
-    private final RenderSystem.AutoStorageIndexBuffer quadIndices = RenderSystem.getSequentialBuffer(PrimitiveTopology.QUADS);
+    private final RenderSystem.AutoStorageIndexBuffer quadIndices = RenderSystem
+            .getSequentialBuffer(PrimitiveTopology.QUADS);
     private final AbstractTexture endSkyTexture;
     private final AbstractTexture celestialSphereTexture;
     private final GpuBuffer topCelestialSphereBuffer;
     private final GpuBuffer bottomCelestialSphereBuffer;
     private int starIndexCount;
-
 
     public ReadstarSkyRenderer(TextureManager textureManager, AtlasManager atlasManager, RenderTarget renderTarget) {
         this.celestialsAtlas = atlasManager.getAtlasOrThrow(ReadStarClient.CELESTIAL_ATLAS_INFO);
@@ -89,19 +91,23 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         this.haloBuffer = buildHaloQuad(this.celestialsAtlas);
         this.celestialSphereTexture = this.getTexture(textureManager, CELESTIAL_SPHERE_LOCATION);
 
-        try (ByteBufferBuilder builder = ByteBufferBuilder.exactlySized(10 * DefaultVertexFormat.POSITION.getVertexSize())) {
-            BufferBuilder bufferBuilder = new BufferBuilder(builder, PrimitiveTopology.TRIANGLE_FAN, DefaultVertexFormat.POSITION);
+        try (ByteBufferBuilder builder = ByteBufferBuilder
+                .exactlySized(10 * DefaultVertexFormat.POSITION.getVertexSize())) {
+            BufferBuilder bufferBuilder = new BufferBuilder(builder, PrimitiveTopology.TRIANGLE_FAN,
+                    DefaultVertexFormat.POSITION);
             this.buildSkyDisc(bufferBuilder, 16.0F);
 
             try (MeshData meshData = bufferBuilder.buildOrThrow()) {
-                this.topSkyBuffer = RenderSystem.getDevice().createBuffer(() -> "Top sky vertex buffer", 32, meshData.vertexBuffer());
+                this.topSkyBuffer = RenderSystem.getDevice().createBuffer(() -> "Top sky vertex buffer", 32,
+                        meshData.vertexBuffer());
             }
 
             bufferBuilder = new BufferBuilder(builder, PrimitiveTopology.TRIANGLE_FAN, DefaultVertexFormat.POSITION);
             this.buildSkyDisc(bufferBuilder, -16.0F);
 
             try (MeshData meshData = bufferBuilder.buildOrThrow()) {
-                this.bottomSkyBuffer = RenderSystem.getDevice().createBuffer(() -> "Bottom sky vertex buffer", 32, meshData.vertexBuffer());
+                this.bottomSkyBuffer = RenderSystem.getDevice().createBuffer(() -> "Bottom sky vertex buffer", 32,
+                        meshData.vertexBuffer());
             }
         }
 
@@ -134,10 +140,9 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         Identifier spriteId = Identifier.fromNamespaceAndPath(ReadStar.MODID,
                 "environment/celestial/luminous/" + name);
         TextureAtlasSprite sprite = celestialsAtlas.getSprite(spriteId);
-        if (sprite == celestialsAtlas.missingSprite()) {
+        if (sprite == celestialsAtlas.missingSprite())
             ReadStar.LOGGER.warn("Luminous sprite not found: {}", spriteId);
-            return null;
-        }
+
         return buildQuadBuffer(name, "luminous", List.of(sprite));
     }
 
@@ -153,13 +158,9 @@ public class ReadstarSkyRenderer implements AutoCloseable {
             Identifier spriteId = Identifier.fromNamespaceAndPath(ReadStar.MODID,
                     "environment/celestial/non-luminous/" + name + "/" + phase.getSerializedName());
             TextureAtlasSprite sprite = celestialsAtlas.getSprite(spriteId);
-            if (sprite != celestialsAtlas.missingSprite()) {
-                sprites.add(sprite);
-            }
-        }
-
-        if (sprites.isEmpty()) {
-            return null;
+            if (sprite == celestialsAtlas.missingSprite())
+                ReadStar.LOGGER.warn("Nonluminous sprite not found: {}", spriteId);
+            sprites.add(sprite);
         }
 
         return buildQuadBuffer(name, "non-luminous", sprites);
@@ -179,7 +180,8 @@ public class ReadstarSkyRenderer implements AutoCloseable {
             }
             try (MeshData mesh = buf.buildOrThrow()) {
                 ReadStar.LOGGER.info("Built {} buffer for '{}': {} sprites", category, name, sprites.size());
-                return RenderSystem.getDevice().createBuffer(() -> "Body/" + name + " (" + category + ") buffer", 32, mesh.vertexBuffer());
+                return RenderSystem.getDevice().createBuffer(() -> "Body/" + name + " (" + category + ") buffer", 32,
+                        mesh.vertexBuffer());
             }
         }
     }
@@ -193,7 +195,8 @@ public class ReadstarSkyRenderer implements AutoCloseable {
 
         GpuBuffer var16;
         try (ByteBufferBuilder byteBufferBuilder = ByteBufferBuilder.exactlySized(18 * vtxSize)) {
-            BufferBuilder bufferBuilder = new BufferBuilder(byteBufferBuilder, PrimitiveTopology.TRIANGLE_FAN, DefaultVertexFormat.POSITION_COLOR);
+            BufferBuilder bufferBuilder = new BufferBuilder(byteBufferBuilder, PrimitiveTopology.TRIANGLE_FAN,
+                    DefaultVertexFormat.POSITION_COLOR);
             int centerColor = ARGB.white(1.0F);
             int ringColor = ARGB.white(0.0F);
             bufferBuilder.addVertex(0.0F, 100.0F, 0.0F).setColor(centerColor);
@@ -232,9 +235,9 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         try (ByteBufferBuilder bb = ByteBufferBuilder.exactlySized(4 * format.getVertexSize())) {
             BufferBuilder buf = new BufferBuilder(bb, PrimitiveTopology.QUADS, format);
             buf.addVertex(-1.0F, 0.0F, -1.0F).setUv(sprite.getU0(), sprite.getV0()).setColor(white);
-            buf.addVertex( 1.0F, 0.0F, -1.0F).setUv(sprite.getU1(), sprite.getV0()).setColor(white);
-            buf.addVertex( 1.0F, 0.0F,  1.0F).setUv(sprite.getU1(), sprite.getV1()).setColor(white);
-            buf.addVertex(-1.0F, 0.0F,  1.0F).setUv(sprite.getU0(), sprite.getV1()).setColor(white);
+            buf.addVertex(1.0F, 0.0F, -1.0F).setUv(sprite.getU1(), sprite.getV0()).setColor(white);
+            buf.addVertex(1.0F, 0.0F, 1.0F).setUv(sprite.getU1(), sprite.getV1()).setColor(white);
+            buf.addVertex(-1.0F, 0.0F, 1.0F).setUv(sprite.getU0(), sprite.getV1()).setColor(white);
             try (MeshData mesh = buf.buildOrThrow()) {
                 var = RenderSystem.getDevice().createBuffer(() -> "Halo quad", 32, mesh.vertexBuffer());
             }
@@ -261,7 +264,6 @@ public class ReadstarSkyRenderer implements AutoCloseable {
 
         return var6;
     }
-
 
     public void buildStarsBuffer(List<Star> stars) {
         int starCount = stars.size();
@@ -307,7 +309,8 @@ public class ReadstarSkyRenderer implements AutoCloseable {
                     float starSize = Math.max(sizeF, 0.3f) * coreSize;
 
                     // ---- 核心 quad（所有星）：4 顶点共享 center，Offset 区分角落 ----
-                    Identifier coreId = Identifier.fromNamespaceAndPath(ReadStar.MODID, "environment/stars/color_" + color);
+                    Identifier coreId = Identifier.fromNamespaceAndPath(ReadStar.MODID,
+                            "environment/stars/color_" + color);
                     TextureAtlasSprite coreSprite = this.starsAtlas.getSprite(coreId);
 
                     RenderUtils.writeStarQuad(buf, vtxSize,
@@ -326,7 +329,8 @@ public class ReadstarSkyRenderer implements AutoCloseable {
                         else
                             glowLevel = "glow_low";
 
-                        Identifier glowId = Identifier.fromNamespaceAndPath(ReadStar.MODID, "environment/stars/" + glowLevel + "_" + color);
+                        Identifier glowId = Identifier.fromNamespaceAndPath(ReadStar.MODID,
+                                "environment/stars/" + glowLevel + "_" + color);
                         TextureAtlasSprite glowSprite = this.starsAtlas.getSprite(glowId);
 
                         RenderUtils.writeStarQuad(buf, vtxSize,
@@ -353,7 +357,8 @@ public class ReadstarSkyRenderer implements AutoCloseable {
             this.starIndexCount = totalVertices / 4 * 6;
             ReadStar.LOGGER.info("Built star vertex buffer with {} indices ({} stars, {} with glow)",
                     this.starIndexCount, starCount, glowStarCount);
-            this.starBuffer = RenderSystem.getDevice().createBuffer(() -> "Stars vertex buffer", 32, result.byteBuffer());
+            this.starBuffer = RenderSystem.getDevice().createBuffer(() -> "Stars vertex buffer", 32,
+                    result.byteBuffer());
         }
     }
 
@@ -394,25 +399,25 @@ public class ReadstarSkyRenderer implements AutoCloseable {
             BufferBuilder buf = new BufferBuilder(bb, PrimitiveTopology.TRIANGLES, format);
 
             for (int i = 0; i < DOME_STACKS; i++) {
-                float theta1 = i * (float)(Math.PI / 2) / DOME_STACKS;
-                float theta2 = (i + 1) * (float)(Math.PI / 2) / DOME_STACKS;
+                float theta1 = i * (float) (Math.PI / 2) / DOME_STACKS;
+                float theta2 = (i + 1) * (float) (Math.PI / 2) / DOME_STACKS;
 
                 float y1 = DOME_RADIUS * Mth.cos(theta1);
                 float y2 = DOME_RADIUS * Mth.cos(theta2);
                 float r1 = DOME_RADIUS * Mth.sin(theta1);
                 float r2 = DOME_RADIUS * Mth.sin(theta2);
 
-                float v1 = vBase + vSign * theta1 / (float)(Math.PI / 2) * vScale;
-                float v2 = vBase + vSign * theta2 / (float)(Math.PI / 2) * vScale;
+                float v1 = vBase + vSign * theta1 / (float) (Math.PI / 2) * vScale;
+                float v2 = vBase + vSign * theta2 / (float) (Math.PI / 2) * vScale;
 
                 for (int j = 0; j < DOME_SLICES; j++) {
-                    float phi1 = j * (float)(2 * Math.PI) / DOME_SLICES;
-                    float phi2 = (j + 1) * (float)(2 * Math.PI) / DOME_SLICES;
+                    float phi1 = j * (float) (2 * Math.PI) / DOME_SLICES;
+                    float phi2 = (j + 1) * (float) (2 * Math.PI) / DOME_SLICES;
 
                     float c1 = Mth.cos(phi1), s1 = Mth.sin(phi1);
                     float c2 = Mth.cos(phi2), s2 = Mth.sin(phi2);
-                    float u1 = phi1 / (float)(2 * Math.PI);
-                    float u2 = phi2 / (float)(2 * Math.PI);
+                    float u1 = phi1 / (float) (2 * Math.PI);
+                    float u2 = phi2 / (float) (2 * Math.PI);
 
                     float sy1 = isTop ? y1 : -y1;
                     float sy2 = isTop ? y2 : -y2;
@@ -498,7 +503,6 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         return var10;
     }
 
-
     /**
      * 渲染完整天球图，银道→赤道预旋转 + observer 天球坐标系旋转（仅旋转，不平移）。
      */
@@ -555,37 +559,57 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         modelViewStack.popMatrix();
     }
 
-   public void renderSkyDisc(int skyColor) {
-      GpuBufferSlice dynamicTransforms = RenderSystem.getDynamicUniforms().writeTransform(RenderSystem.getModelViewMatrixCopy(), ARGB.vector4fFromARGB32(skyColor));
-      GpuTextureView colorTexture = this.renderTarget.getColorTextureView();
-      GpuTextureView depthTexture = this.renderTarget.getDepthTextureView();
-      RenderPass renderPass = RenderSystem.getDevice().createCommandEncoder().createRenderPass(() -> {
-         return "Sky disc";
-      }, colorTexture, Optional.empty(), depthTexture, OptionalDouble.empty());
+    public void renderSkyDisc(int skyColor, int atmosphereHSV) {
+        // 如果观测者有大氣，將 skyColor 與大氣顏色混合
+        Vector4f color;
+        if (atmosphereHSV != 0) {
+            Vector4f skyRGBA = ARGB.vector4fFromARGB32(skyColor);
+            float atmH = RenderUtils.getHueFloat(atmosphereHSV);
+            float atmS = RenderUtils.getSaturationFloat(atmosphereHSV);
+            float atmV = RenderUtils.getValueFloat(atmosphereHSV);
+            // 以大气颜色为主体，skyColor 仅轻微染色
+            float[] atmRGB = RenderUtils.hsvToRgb(atmH, atmS, atmV);
+            float atmWeight = 0.8f; // 大气权重
+            float skyWeight = 1.0f - atmWeight;
+            color = new Vector4f(
+                    atmRGB[0] * atmWeight + skyRGBA.x * skyWeight,
+                    atmRGB[1] * atmWeight + skyRGBA.y * skyWeight,
+                    atmRGB[2] * atmWeight + skyRGBA.z * skyWeight,
+                    skyRGBA.w * atmV // 整体透明度随大气亮度缩放
+            );
+        } else {
+            color = ARGB.vector4fFromARGB32(skyColor);
+        }
 
-      try {
-         renderPass.setPipeline(RenderPipelines.SKY);
-         RenderSystem.bindDefaultUniforms(renderPass);
-         renderPass.setUniform("DynamicTransforms", dynamicTransforms);
-         renderPass.setVertexBuffer(0, this.topSkyBuffer.slice());
-         renderPass.draw(10, 1, 0, 0);
-      } catch (Throwable var9) {
-         if (renderPass != null) {
-            try {
-               renderPass.close();
-            } catch (Throwable var8) {
-               var9.addSuppressed(var8);
+        GpuBufferSlice dynamicTransforms = RenderSystem.getDynamicUniforms()
+                .writeTransform(RenderSystem.getModelViewMatrixCopy(), color, new Vector3f(),
+                        new Matrix4f());
+        GpuTextureView colorTexture = this.renderTarget.getColorTextureView();
+        GpuTextureView depthTexture = this.renderTarget.getDepthTextureView();
+        RenderPass renderPass = RenderSystem.getDevice().createCommandEncoder().createRenderPass(() -> "Sky disc",
+                colorTexture, Optional.empty(), depthTexture, OptionalDouble.empty());
+        try {
+            renderPass.setPipeline(RenderPipelines.SKY);
+            RenderSystem.bindDefaultUniforms(renderPass);
+            renderPass.setUniform("DynamicTransforms", dynamicTransforms);
+            renderPass.setVertexBuffer(0, this.topSkyBuffer.slice());
+            renderPass.draw(10, 1, 0, 0);
+        } catch (Throwable var9) {
+            if (renderPass != null) {
+                try {
+                    renderPass.close();
+                } catch (Throwable var8) {
+                    var9.addSuppressed(var8);
+                }
             }
-         }
 
-         throw var9;
-      }
+            throw var9;
+        }
 
-      if (renderPass != null) {
-         renderPass.close();
-      }
-
-   }
+        if (renderPass != null) {
+            renderPass.close();
+        }
+    }
 
     public void extractRenderState(ClientLevel level, float partialTicks, Camera camera, SkyRenderState state) {
         state.skybox = level.dimensionType().skybox();
@@ -625,13 +649,15 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         Matrix4fStack modelViewStack = RenderSystem.getModelViewStack();
         modelViewStack.pushMatrix();
         modelViewStack.translate(0.0F, 12.0F, 0.0F);
-        GpuBufferSlice dynamicTransforms = RenderSystem.getDynamicUniforms().writeTransform(new Matrix4f(modelViewStack), new Vector4f(0.0F, 0.0F, 0.0F, 1.0F));
+        GpuBufferSlice dynamicTransforms = RenderSystem.getDynamicUniforms()
+                .writeTransform(new Matrix4f(modelViewStack), new Vector4f(0.0F, 0.0F, 0.0F, 1.0F));
         GpuTextureView colorTexture = this.renderTarget.getColorTextureView();
         GpuTextureView depthTexture = this.renderTarget.getDepthTextureView();
 
         try (RenderPass renderPass = RenderSystem.getDevice()
                 .createCommandEncoder()
-                .createRenderPass(() -> "Sky dark", colorTexture, Optional.empty(), depthTexture, OptionalDouble.empty())) {
+                .createRenderPass(() -> "Sky dark", colorTexture, Optional.empty(), depthTexture,
+                        OptionalDouble.empty())) {
             renderPass.setPipeline(RenderPipelines.SKY);
             RenderSystem.bindDefaultUniforms(renderPass);
             renderPass.setUniform("DynamicTransforms", dynamicTransforms);
@@ -642,8 +668,8 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         modelViewStack.popMatrix();
     }
 
-
-    public void renderCelestialAndStars(PoseStack poseStack, float rainBrightness, float starBrightness, CelestialBody observer, long gameTime) {
+    public void renderCelestialAndStars(PoseStack poseStack, float rainBrightness, float starBrightness,
+            CelestialBody observer, long gameTime) {
         CelestialBodyManager manager = CelestialBodyManager.getInstance();
         poseStack.pushPose();
 
@@ -652,11 +678,11 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         float effectiveBrightness = (s * starBrightness) / (s * starBrightness + 1.0f);
         float fov = Minecraft.getInstance().gameRenderer.mainCamera().getFov();
         double brightnessFactor = 1.0 + Config.STAR_FOV_BRIGHTNESS_STRENGTH.get() * Math.max(0.0, (70.0 - fov) / 70.0);
-        effectiveBrightness = effectiveBrightness * (float)brightnessFactor;
+        effectiveBrightness = effectiveBrightness * (float) brightnessFactor;
 
         // ===== 整体天球框架旋转（先确定世界坐标 → 再整体旋转） =====
         // Y = currentRotationVector (观测者天顶方向) → 标准 Y(0,1,0) 映射至此
-        // Z = rotationAxis (天球极轴)              → 标准 Z(0,0,1) 映射至此
+        // Z = rotationAxis (天球极轴) → 标准 Z(0,0,1) 映射至此
         // X = Y × Z
         boolean hasFrame = false;
         Vector3f observerPos = null;
@@ -672,11 +698,14 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         if (hasFrame && observerPos != null) {
             // ---- ALL CELESTIAL BODIES（统一渲染 luminous + non-luminous） ----
             for (CelestialBody body : manager.getCelestialBodyTreeMap()) {
-                if (body == observer) continue;
-                if (body.hostStar == null) continue;
+                if (body == observer)
+                    continue;
+                if (body.hostStar == null)
+                    continue;
 
                 Vector3f toWorld = new Vector3f(body.position).sub(observerPos);
-                if (toWorld.lengthSquared() <= 0.0001f) continue;
+                if (toWorld.lengthSquared() <= 0.0001f)
+                    continue;
                 toWorld.normalize();
 
                 ReadStar.LOGGER.debug("toWorld of {}: {}", body.name, toWorld.toString());
@@ -726,24 +755,23 @@ public class ReadstarSkyRenderer implements AutoCloseable {
 
         // 观测者→天体 和 观测者→恒星 的方向（从地球看月亮和太阳）
         Vector3f obsToMoon = new Vector3f(target.position).sub(observer).normalize();
-        Vector3f obsToSun  = new Vector3f(target.hostStar.position).sub(observer).normalize();
+        Vector3f obsToSun = new Vector3f(target.hostStar.position).sub(observer).normalize();
 
         // 相位角 φ = acos(dot): 0=新月(同向), π=满月(反向)
         float dot = obsToMoon.dot(obsToSun);
-        double phi = Math.acos(dot);           // [0, π]
-        double t   = phi / Math.PI;            // [0, 1]: 0=NEW, 1=FULL
+        double phi = Math.acos(dot); // [0, π]
+        double t = phi / Math.PI; // [0, 1]: 0=NEW, 1=FULL
 
         // 盈亏方向：obsToMoon × obsToSun 与轨道法线的点积
         // 轨道法线由轨道倾角 i 和升交点经度 Ω 决定
-        double i     = target.orbit.inclination();
+        double i = target.orbit.inclination();
         double Omega = target.orbit.longitudeOfAscendingNode();
         Vector3f orbitNormal = new Vector3f(
-            (float) (Math.sin(Omega) * Math.sin(i)),
-            (float) (-Math.cos(Omega) * Math.sin(i)),
-            (float) Math.cos(i)
-        );
+                (float) (Math.sin(Omega) * Math.sin(i)),
+                (float) (-Math.cos(Omega) * Math.sin(i)),
+                (float) Math.cos(i));
         Vector3f cross = new Vector3f(obsToMoon).cross(obsToSun);
-        float side = cross.dot(orbitNormal);   // <0 = 盈(waxing), >0 = 亏(waning)
+        float side = cross.dot(orbitNormal); // <0 = 盈(waxing), >0 = 亏(waning)
 
         int idx;
         if (side <= 0) {
@@ -764,14 +792,17 @@ public class ReadstarSkyRenderer implements AutoCloseable {
      */
     public void buildAndRenderMeteors(PoseStack poseStack, float starBrightness, long gameTime) {
         var meteors = MeteorCollector.getInstance().activeMeteors;
-        if (meteors.isEmpty()) return;
+        if (meteors.isEmpty())
+            return;
 
         // 只统计已到达起始时间的流星（未到达时跳过，避免负 elapsed 导致错误位置）
         int renderCount = 0;
         for (Meteor meteor : meteors) {
-            if (gameTime >= meteor.startTick()) renderCount++;
+            if (gameTime >= meteor.startTick())
+                renderCount++;
         }
-        if (renderCount == 0) return;
+        if (renderCount == 0)
+            return;
 
         VertexFormat format = DefaultVertexFormat.POSITION;
         int vtxSize = format.getVertexSize();
@@ -785,7 +816,8 @@ public class ReadstarSkyRenderer implements AutoCloseable {
             BufferBuilder builder = new BufferBuilder(buf, PrimitiveTopology.QUADS, format);
 
             for (Meteor meteor : meteors) {
-                if (gameTime < meteor.startTick()) continue; // 起始时间未到，跳过
+                if (gameTime < meteor.startTick())
+                    continue; // 起始时间未到，跳过
                 float progress = meteor.getCurrentProgress(gameTime);
                 Vector3f currentPos = new Vector3f(meteor.startPosition()).lerp(meteor.endPosition(), progress);
 
@@ -802,11 +834,12 @@ public class ReadstarSkyRenderer implements AutoCloseable {
                 builder.addVertex(new Vector3f().sub(trailDir).add(sideDir).mul(headSize).add(center));
                 builder.addVertex(new Vector3f().sub(trailDir).sub(sideDir).mul(headSize).add(center));
                 // ===== 尾迹：沿轨迹方向的矩形 =====
-                Vector3f trail = new Vector3f(currentPos).lerp(meteor.startPosition(), progress*(1-progress)).normalize(starDist);
-                
+                Vector3f trail = new Vector3f(currentPos).lerp(meteor.startPosition(), progress * (1 - progress))
+                        .normalize(starDist);
+
                 float halfWid = 0.04f;
                 Vector3f sOff = sideDir.mul(halfWid);
-                
+
                 builder.addVertex(new Vector3f(trail).sub(sOff));
                 builder.addVertex(new Vector3f(trail).add(sOff));
                 builder.addVertex(new Vector3f(center).add(sOff));
@@ -814,7 +847,8 @@ public class ReadstarSkyRenderer implements AutoCloseable {
             }
 
             try (MeshData mesh = builder.buildOrThrow()) {
-                try (GpuBuffer buffer = RenderSystem.getDevice().createBuffer(() -> "Meteors", 32, mesh.vertexBuffer())) {
+                try (GpuBuffer buffer = RenderSystem.getDevice().createBuffer(() -> "Meteors", 32,
+                        mesh.vertexBuffer())) {
 
                     Matrix4fStack modelViewStack = RenderSystem.getModelViewStack();
                     modelViewStack.pushMatrix();
@@ -824,11 +858,14 @@ public class ReadstarSkyRenderer implements AutoCloseable {
                     GpuTextureView depthTexture = this.renderTarget.getDepthTextureView();
                     GpuBuffer indexBuffer = this.quadIndices.getBuffer(totalIndices);
                     GpuBufferSlice dynamicTransforms = RenderSystem.getDynamicUniforms()
-                        .writeTransform(new Matrix4f(modelViewStack), new Vector4f(0.6f, 0.6f, 0.01f, starBrightness * 0.7f), new Vector3f(), new Matrix4f());
+                            .writeTransform(new Matrix4f(modelViewStack),
+                                    new Vector4f(0.6f, 0.6f, 0.01f, starBrightness * 0.7f), new Vector3f(),
+                                    new Matrix4f());
 
                     try (RenderPass renderPass = RenderSystem.getDevice()
                             .createCommandEncoder()
-                            .createRenderPass(() -> "Meteors", colorTexture, Optional.empty(), depthTexture, OptionalDouble.empty())) {
+                            .createRenderPass(() -> "Meteors", colorTexture, Optional.empty(), depthTexture,
+                                    OptionalDouble.empty())) {
                         renderPass.setPipeline(renderPipeline);
                         RenderSystem.bindDefaultUniforms(renderPass);
                         renderPass.setUniform("DynamicTransforms", dynamicTransforms);
@@ -846,32 +883,36 @@ public class ReadstarSkyRenderer implements AutoCloseable {
     /**
      * 通用天体渲染方法（luminous + non-luminous 共用）。
      *
-     * @param name          天体的调试名称（仅用于 RenderPass 命名）
-     * @param buffer        该天体的月相 GPU 缓冲（来自 getOrCreateBodyBuffer 懒创建）
-     * @param phase         当前月相（0-7）
-     * @param size          视大小
+     * @param name           天体的调试名称（仅用于 RenderPass 命名）
+     * @param buffer         该天体的月相 GPU 缓冲（来自 getOrCreateBodyBuffer 懒创建）
+     * @param phase          当前月相（0-7）
+     * @param size           视大小
      * @param rainBrightness 雨天亮度衰减
-     * @param poseStack     PoseStack 变换
+     * @param poseStack      PoseStack 变换
      */
-    private void renderBody(String name, GpuBuffer buffer, MoonPhase phase, float size, float rainBrightness, PoseStack poseStack) {
+    private void renderBody(String name, GpuBuffer buffer, MoonPhase phase, float size, float rainBrightness,
+            PoseStack poseStack) {
         int baseVertex = phase.index() * 4;
         Matrix4fStack modelViewStack = RenderSystem.getModelViewStack();
         modelViewStack.pushMatrix();
         modelViewStack.mul(poseStack.last().pose());
         modelViewStack.translate(0.0F, 100.0F, 0.0F);
         modelViewStack.scale(size, -1.0F, size);
-        
+
         // 使用矩阵副本避免 DynamicUniforms 延迟读取时 modelViewStack 已被后续天体修改
-        GpuBufferSlice dynamicTransforms = RenderSystem.getDynamicUniforms().writeTransform(new Matrix4f(modelViewStack), new Vector4f(1.0F, 1.0F, 1.0F, rainBrightness));
+        GpuBufferSlice dynamicTransforms = RenderSystem.getDynamicUniforms()
+                .writeTransform(new Matrix4f(modelViewStack), new Vector4f(1.0F, 1.0F, 1.0F, rainBrightness));
         GpuTextureView color = this.renderTarget.getColorTextureView();
         GpuTextureView depth = this.renderTarget.getDepthTextureView();
         GpuBuffer indexBuffer = this.quadIndices.getBuffer(6);
 
-        try (RenderPass renderPass = RenderSystem.getDevice().createCommandEncoder().createRenderPass(() -> "Sky " + name, color, Optional.empty(), depth, OptionalDouble.empty())) {
+        try (RenderPass renderPass = RenderSystem.getDevice().createCommandEncoder()
+                .createRenderPass(() -> "Sky " + name, color, Optional.empty(), depth, OptionalDouble.empty())) {
             renderPass.setPipeline(RenderPipelines.CELESTIAL);
             RenderSystem.bindDefaultUniforms(renderPass);
             renderPass.setUniform("DynamicTransforms", dynamicTransforms);
-            renderPass.bindTexture("Sampler0", this.celestialsAtlas.getTextureView(), this.celestialsAtlas.getSampler());
+            renderPass.bindTexture("Sampler0", this.celestialsAtlas.getTextureView(),
+                    this.celestialsAtlas.getSampler());
             renderPass.setVertexBuffer(0, buffer.slice());
             renderPass.setIndexBuffer(indexBuffer, this.quadIndices.type());
             renderPass.drawIndexed(6, 1, 0, baseVertex, 0);
@@ -885,15 +926,15 @@ public class ReadstarSkyRenderer implements AutoCloseable {
      * 使用灰度光晕纹理（halo.png，白色中心→透明边缘）+ POSITION_TEX_COLOR 管线，
      * 顶点色统一设为 glowHSV→RGB，通过纹理的 alpha 通道实现柔和衰减。
      *
-     * @param glowHSV       光晕 HSV（由 computeGlowColor 计算）
-     * @param size          光晕尺寸（通常为天体视大小的 3~5 倍）
+     * @param glowHSV        光晕 HSV（由 computeGlowColor 计算）
+     * @param size           光晕尺寸（通常为天体视大小的 3~5 倍）
      * @param rainBrightness 雨天衰减
-     * @param poseStack     PoseStack 变换
+     * @param poseStack      PoseStack 变换
      */
     private void renderGlow(int glowHSV, float size, float rainBrightness, PoseStack poseStack) {
-        float h = CelestialBody.getHueFloat(glowHSV);
-        float s = CelestialBody.getSaturationFloat(glowHSV);
-        float v = CelestialBody.getValueFloat(glowHSV);
+        float h = RenderUtils.getHueFloat(glowHSV);
+        float s = RenderUtils.getSaturationFloat(glowHSV);
+        float v = RenderUtils.getValueFloat(glowHSV);
 
         // HSV → RGB，alpha 由 V × rainBrightness 控制
         float[] rgb = RenderUtils.hsvToRgb(h, s, 1.0f);
@@ -905,7 +946,8 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         modelViewStack.translate(0.0F, 100.0F, 0.0F);
         modelViewStack.scale(size, -1.0F, size);
         GpuBufferSlice dynamicTransforms = RenderSystem.getDynamicUniforms()
-                .writeTransform(new Matrix4f(modelViewStack), new Vector4f(rgb[0], rgb[1], rgb[2], alpha), new Vector3f(),
+                .writeTransform(new Matrix4f(modelViewStack), new Vector4f(rgb[0], rgb[1], rgb[2], alpha),
+                        new Vector3f(),
                         new Matrix4f());
         GpuTextureView color = this.renderTarget.getColorTextureView();
         GpuTextureView depth = this.renderTarget.getDepthTextureView();
@@ -917,7 +959,8 @@ public class ReadstarSkyRenderer implements AutoCloseable {
             renderPass.setPipeline(ReadstarRenderPipelines.HALO);
             RenderSystem.bindDefaultUniforms(renderPass);
             renderPass.setUniform("DynamicTransforms", dynamicTransforms);
-            renderPass.bindTexture("Sampler0", this.celestialsAtlas.getTextureView(), this.celestialsAtlas.getSampler());
+            renderPass.bindTexture("Sampler0", this.celestialsAtlas.getTextureView(),
+                    this.celestialsAtlas.getSampler());
             renderPass.setVertexBuffer(0, this.haloBuffer.slice());
             renderPass.setIndexBuffer(indexBuffer, this.quadIndices.type());
             renderPass.drawIndexed(6, 1, 0, 0, 0);
@@ -938,17 +981,22 @@ public class ReadstarSkyRenderer implements AutoCloseable {
     private float ionMaxDist = 1.0f * (float) AU;
     private float ionCurv = 0.03f;
     private float ionWobbleFreq = 0.14f, ionWaveFreq = 7.0f, ionWobbleAmp = 0.002f;
+
     /**
      * 遍历天体树，为所有 unstableDirtySnowball 彗星渲染尾部。
      * 使用世界空间 Bézier 曲线投影到天球绘制。
      */
-    private void renderComets(CelestialBodyManager manager, Vector3f observerPos, float rainBrightness, PoseStack poseStack, long gameTick) {
-        if (observerPos == null) return;
+    private void renderComets(CelestialBodyManager manager, Vector3f observerPos, float rainBrightness,
+            PoseStack poseStack, long gameTick) {
+        if (observerPos == null)
+            return;
 
         // ==== 遍历所有 unstableDirtySnowball 天体 ====
         for (CelestialBody body : manager.getCelestialBodyTreeMap()) {
-            if (!body.unstableDirtySnowball) continue;
-            if (body.hostStar == null) continue;
+            if (!body.unstableDirtySnowball)
+                continue;
+            if (body.hostStar == null)
+                continue;
 
             Vector3f cometPos = body.position;
             Vector3f sunPos = body.hostStar.position;
@@ -956,10 +1004,9 @@ public class ReadstarSkyRenderer implements AutoCloseable {
             double i = body.orbit.inclination();
             double omega = body.orbit.longitudeOfAscendingNode();
             Vector3f orbitNormal = new Vector3f(
-                (float)(Math.sin(omega) * Math.sin(i)),
-                (float)(-Math.cos(omega) * Math.sin(i)),
-                (float)Math.cos(i)
-            );
+                    (float) (Math.sin(omega) * Math.sin(i)),
+                    (float) (-Math.cos(omega) * Math.sin(i)),
+                    (float) Math.cos(i));
             renderOneComet(cometPos, sunPos, orbitNormal, observerPos, rainBrightness, poseStack, gameTick);
         }
 
@@ -972,8 +1019,10 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         Vector3f antiSun = new Vector3f(cometPos).sub(sunPos).normalize();
         // 尾巴弯曲方向在轨道平面内：antiSun × orbitNormal
         Vector3f rightDir = new Vector3f(antiSun).cross(orbitNormal);
-        if (rightDir.lengthSquared() < 0.0001f) rightDir.set(orbitNormal).cross(antiSun).normalize();
-        else rightDir.normalize();
+        if (rightDir.lengthSquared() < 0.0001f)
+            rightDir.set(orbitNormal).cross(antiSun).normalize();
+        else
+            rightDir.normalize();
 
         Vector3f wobbleDir = new Vector3f(antiSun).cross(rightDir).normalize();
 
@@ -1005,7 +1054,8 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         Vector3f cometSkyDir = new Vector3f(cometPos).sub(observerPos).normalize().mul(skyHeight);
         Vector3f upRef = new Vector3f(0, 1, 0);
         Vector3f tangent1 = new Vector3f(cometSkyDir).cross(upRef);
-        if (tangent1.lengthSquared() < 0.0001f) tangent1.set(1, 0, 0).cross(cometSkyDir);
+        if (tangent1.lengthSquared() < 0.0001f)
+            tangent1.set(1, 0, 0).cross(cometSkyDir);
         float tangent1Length = 0.2f;
         tangent1.normalize().mul(tangent1Length);
         Vector3f tangent2 = new Vector3f(cometSkyDir).cross(tangent1).normalize().mul(tangent1Length);
@@ -1017,17 +1067,17 @@ public class ReadstarSkyRenderer implements AutoCloseable {
             BufferBuilder buf = new BufferBuilder(bb, PrimitiveTopology.TRIANGLE_STRIP,
                     DefaultVertexFormat.POSITION_COLOR);
             buf.addVertex(cometSkyDir.x + tangent1.x + tangent2.x,
-                          cometSkyDir.y + tangent1.y + tangent2.y,
-                          cometSkyDir.z + tangent1.z + tangent2.z).setColor(white);
+                    cometSkyDir.y + tangent1.y + tangent2.y,
+                    cometSkyDir.z + tangent1.z + tangent2.z).setColor(white);
             buf.addVertex(cometSkyDir.x + tangent1.x - tangent2.x,
-                          cometSkyDir.y + tangent1.y - tangent2.y,
-                          cometSkyDir.z + tangent1.z - tangent2.z).setColor(white);
+                    cometSkyDir.y + tangent1.y - tangent2.y,
+                    cometSkyDir.z + tangent1.z - tangent2.z).setColor(white);
             buf.addVertex(cometSkyDir.x - tangent1.x + tangent2.x,
-                          cometSkyDir.y - tangent1.y + tangent2.y,
-                          cometSkyDir.z - tangent1.z + tangent2.z).setColor(white);
+                    cometSkyDir.y - tangent1.y + tangent2.y,
+                    cometSkyDir.z - tangent1.z + tangent2.z).setColor(white);
             buf.addVertex(cometSkyDir.x - tangent1.x - tangent2.x,
-                          cometSkyDir.y - tangent1.y - tangent2.y,
-                          cometSkyDir.z - tangent1.z - tangent2.z).setColor(white);
+                    cometSkyDir.y - tangent1.y - tangent2.y,
+                    cometSkyDir.z - tangent1.z - tangent2.z).setColor(white);
             try (MeshData mesh = buf.buildOrThrow()) {
                 GpuBuffer buffer = RenderSystem.getDevice().createBuffer(() -> "Comet marker", 32, mesh.vertexBuffer());
                 Matrix4fStack modelViewStack = RenderSystem.getModelViewStack();
@@ -1042,7 +1092,8 @@ public class ReadstarSkyRenderer implements AutoCloseable {
 
                 try (RenderPass renderPass = RenderSystem.getDevice()
                         .createCommandEncoder()
-                        .createRenderPass(() -> "Comet marker", color, Optional.empty(), depth, OptionalDouble.empty())) {
+                        .createRenderPass(() -> "Comet marker", color, Optional.empty(), depth,
+                                OptionalDouble.empty())) {
                     renderPass.setPipeline(ReadstarRenderPipelines.COMET_TAIL);
                     RenderSystem.bindDefaultUniforms(renderPass);
                     renderPass.setUniform("DynamicTransforms", dynamicTransforms);
@@ -1094,12 +1145,14 @@ public class ReadstarSkyRenderer implements AutoCloseable {
                 sideways.sub(dir.x * dot, dir.y * dot, dir.z * dot);
                 if (sideways.lengthSquared() < 0.0001f) {
                     sideways.set(dir).cross(1, 0, 0);
-                    if (sideways.lengthSquared() < 0.0001f) sideways.set(0, 1, 0).cross(dir);
+                    if (sideways.lengthSquared() < 0.0001f)
+                        sideways.set(0, 1, 0).cross(dir);
                 }
                 sideways.normalize();
 
                 float halfWidth = hwA + (hwQuadratic ? t * t : t) * hwB;
-                if (isFin) halfWidth *= finMult;
+                if (isFin)
+                    halfWidth *= finMult;
 
                 Vector3f offsetDir;
                 if (isFin) {
@@ -1109,10 +1162,10 @@ public class ReadstarSkyRenderer implements AutoCloseable {
                 }
 
                 float fade = (float) Math.exp(-t * t * fadeExp);
-                int alpha = (int)(fade * alphaMax);
-                int r = (int)((rC * fade + rE * (1f - fade)) * 255);
-                int g = (int)((gC * fade + gE * (1f - fade)) * 255);
-                int b = (int)((bC * fade + bE * (1f - fade)) * 255);
+                int alpha = (int) (fade * alphaMax);
+                int r = (int) ((rC * fade + rE * (1f - fade)) * 255);
+                int g = (int) ((gC * fade + gE * (1f - fade)) * 255);
+                int b = (int) ((bC * fade + bE * (1f - fade)) * 255);
                 int color = ARGB.color(alpha, r, g, b);
 
                 float cx = dir.x * skyHeight, cy = dir.y * skyHeight, cz = dir.z * skyHeight;
@@ -1163,7 +1216,8 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         if (currentFov > 0.1f) {
             double halfFovRad = Math.toRadians(currentFov / 2.0);
             double strength = Config.STAR_FOV_COMPENSATION_STRENGTH.get(); // 1.0 = 完全补偿
-            fovCompensation = (float)(Math.tan(halfFovRad) / Math.tan(Math.toRadians(35.0)) * strength + (1.0 - strength));
+            fovCompensation = (float) (Math.tan(halfFovRad) / Math.tan(Math.toRadians(35.0)) * strength
+                    + (1.0 - strength));
         } else {
             fovCompensation = 1.0f;
         }
@@ -1175,7 +1229,8 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         GpuTextureView depthTexture = this.renderTarget.getDepthTextureView();
         GpuBuffer indexBuffer = this.quadIndices.getBuffer(this.starIndexCount);
 
-        // 将 FovCompensation 编码到 TextureMat[0][0]（着色器中 #define FovCompensation TextureMat[0][0]）
+        // 将 FovCompensation 编码到 TextureMat[0][0]（着色器中 #define FovCompensation
+        // TextureMat[0][0]）
         Matrix4f texMat = new Matrix4f();
         texMat.m00(fovCompensation);
         GpuBufferSlice dynamicTransforms = RenderSystem.getDynamicUniforms()
@@ -1211,7 +1266,8 @@ public class ReadstarSkyRenderer implements AutoCloseable {
             modelViewStack.mul(poseStack.last().pose());
             modelViewStack.scale(1.0F, 1.0F, alpha);
             GpuBufferSlice dynamicTransforms = RenderSystem.getDynamicUniforms()
-                    .writeTransform(new Matrix4f(modelViewStack), ARGB.vector4fFromARGB32(sunriseAndSunsetColor), new Vector3f(),
+                    .writeTransform(new Matrix4f(modelViewStack), ARGB.vector4fFromARGB32(sunriseAndSunsetColor),
+                            new Vector3f(),
                             new Matrix4f());
             GpuTextureView color = this.renderTarget.getColorTextureView();
             GpuTextureView depth = this.renderTarget.getDepthTextureView();
@@ -1238,7 +1294,8 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         GpuTextureView colorTexture = this.renderTarget.getColorTextureView();
         GpuTextureView depthTexture = this.renderTarget.getDepthTextureView();
         GpuBufferSlice dynamicTransforms = RenderSystem.getDynamicUniforms()
-                .writeTransform(RenderSystem.getModelViewMatrixCopy(), new Vector4f(1.0F, 1.0F, 1.0F, 1.0F), new Vector3f(),
+                .writeTransform(RenderSystem.getModelViewMatrixCopy(), new Vector4f(1.0F, 1.0F, 1.0F, 1.0F),
+                        new Vector3f(),
                         new Matrix4f());
 
         try (RenderPass renderPass = RenderSystem.getDevice()
@@ -1295,10 +1352,14 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         int dimColor = 0xCC888888;
         int brightColor = 0xCCFFFFFF;
 
-        if (mc.player == null) return;
-        if (!mc.player.isScoping()) return; // 仅在使用望远镜时显示
-        if (observer == null) return;
-        if (stars == null || stars.isEmpty()) return; // 星表尚未加载
+        if (mc.player == null)
+            return;
+        if (!mc.player.isScoping())
+            return; // 仅在使用望远镜时显示
+        if (observer == null)
+            return;
+        if (stars == null || stars.isEmpty())
+            return; // 星表尚未加载
 
         // 获取玩家视线方向（世界坐标）→ 逆变换到天体局部坐标
         Vec3 worldLook = mc.player.getViewVector(1.0f);
@@ -1306,9 +1367,10 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         Vector3f celestialDir = invQuat.transform(
                 new Vector3f((float) worldLook.x, (float) worldLook.y, (float) worldLook.z));
 
-        g.text(font, String.format("player look: %+.1f, %+.1f, %+.1f", worldLook.x, worldLook.y, worldLook.z), 10, 40, dimColor);
-        g.text(font, String.format("celestialDir: %+.1f, %+.1f, %+.1f", celestialDir.x, celestialDir.y, celestialDir.z), 10, 70, dimColor);
-
+        g.text(font, String.format("player look: %+.1f, %+.1f, %+.1f", worldLook.x, worldLook.y, worldLook.z), 10, 40,
+                dimColor);
+        g.text(font, String.format("celestialDir: %+.1f, %+.1f, %+.1f", celestialDir.x, celestialDir.y, celestialDir.z),
+                10, 70, dimColor);
 
         // 查找视线最近的恒星
         Star nearestStar = null;
@@ -1320,7 +1382,8 @@ public class ReadstarSkyRenderer implements AutoCloseable {
                 nearestStar = s;
             }
         }
-        if (nearestStar == null) return;
+        if (nearestStar == null)
+            return;
 
         // 左上角：高度角
         float altitude = (float) Math.toDegrees(Math.asin(Math.max(-1.0, Math.min(1.0, celestialDir.y))));
@@ -1339,7 +1402,8 @@ public class ReadstarSkyRenderer implements AutoCloseable {
                 net.minecraft.world.level.ClipContext.Block.VISUAL,
                 net.minecraft.world.level.ClipContext.Fluid.NONE,
                 mc.player);
-        if (mc.level.clip(ctx).getType() != net.minecraft.world.phys.HitResult.Type.MISS) return;
+        if (mc.level.clip(ctx).getType() != net.minecraft.world.phys.HitResult.Type.MISS)
+            return;
 
         // 摄像机基向量（世界坐标）
         Vector3f forward = new Vector3f((float) worldLook.x, (float) worldLook.y, (float) worldLook.z);
@@ -1349,7 +1413,8 @@ public class ReadstarSkyRenderer implements AutoCloseable {
 
         // 角偏移
         float dotF = starWorldDir.dot(forward);
-        if (dotF <= 0) return; // 在身后
+        if (dotF <= 0)
+            return; // 在身后
         float dotR = starWorldDir.dot(right);
         float dotU = starWorldDir.dot(up);
 

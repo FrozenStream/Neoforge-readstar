@@ -3,6 +3,9 @@ package git.frozenstream.readstar.elements;
 import org.joml.Matrix3f;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
+
+import git.frozenstream.readstar.skybox.RenderUtils;
+
 import java.util.ArrayList;
 
 /**
@@ -123,36 +126,6 @@ public class CelestialBody {
      */
     public static CelestialBody Root = new CelestialBody("VOID", 0, 0, 0, null, null, new ArrayList<>(), false, false, 0, 0);
 
-    // ==================== 大气 HSV 编解码 ====================
-
-    /** 打包 HSV → int（各分量 0~255） */
-    public static int packHSV(int hue, int saturation, int value) {
-        return ((hue & 0xFF) << 16) | ((saturation & 0xFF) << 8) | (value & 0xFF);
-    }
-
-    /** 打包 HSV → int（各分量 0.0~1.0） */
-    public static int packHSV(float hue, float saturation, float value) {
-        return packHSV((int) (hue * 255), (int) (saturation * 255), (int) (value * 255));
-    }
-
-    /** 提取 Hue（0~255） */
-    public static int getHue(int hsv) { return (hsv >> 16) & 0xFF; }
-
-    /** 提取 Saturation（0~255） */
-    public static int getSaturation(int hsv) { return (hsv >> 8) & 0xFF; }
-
-    /** 提取 Value（0~255） */
-    public static int getValue(int hsv) { return hsv & 0xFF; }
-
-    /** 提取 Hue（0.0~1.0） */
-    public static float getHueFloat(int hsv) { return getHue(hsv) / 255f; }
-
-    /** 提取 Saturation（0.0~1.0） */
-    public static float getSaturationFloat(int hsv) { return getSaturation(hsv) / 255f; }
-
-    /** 提取 Value（0.0~1.0） */
-    public static float getValueFloat(int hsv) { return getValue(hsv) / 255f; }
-
     /**
      * 计算发光体在大气中的光晕颜色。
      * 光晕 = 星光光谱 × 大气散射效率。
@@ -167,12 +140,12 @@ public class CelestialBody {
      * @return 光晕 HSV（打包 int）
      */
     public static int computeGlowColor(int starHSV, int atmosphereHSV) {
-        float starH = getHueFloat(starHSV);
-        float starS = getSaturationFloat(starHSV);
-        float starV = getValueFloat(starHSV);
-        float atmH = getHueFloat(atmosphereHSV);
-        float atmS = getSaturationFloat(atmosphereHSV);
-        float atmV = getValueFloat(atmosphereHSV);
+        float starH = RenderUtils.getHueFloat(starHSV);
+        float starS = RenderUtils.getSaturationFloat(starHSV);
+        float starV = RenderUtils.getValueFloat(starHSV);
+        float atmH = RenderUtils.getHueFloat(atmosphereHSV);
+        float atmS = RenderUtils.getSaturationFloat(atmosphereHSV);
+        float atmV = RenderUtils.getValueFloat(atmosphereHSV);
 
         // 大气散射着色：色相向大气偏移
         float glowH = starH + (atmH - starH) * atmS * atmV * 0.25f;
@@ -181,7 +154,7 @@ public class CelestialBody {
         // 明度：大气散射增亮（散射光叠加）
         float glowV = Math.min(1f, starV + atmV * atmS * 0.15f);
 
-        return packHSV(glowH, glowS, glowV);
+        return git.frozenstream.readstar.skybox.RenderUtils.packHSV(glowH, glowS, glowV);
     }
 
     /**
