@@ -30,7 +30,7 @@ public record SunSpriteSource() implements SpriteSource {
     @Override
     public void run(ResourceManager manager, Output output) {
         ResourceLocation src = ResourceLocation.fromNamespaceAndPath(
-                "minecraft", "textures/environment/celestial/sun.png");
+                "minecraft", "textures/environment/sun.png");
         Optional<Resource> res = manager.getResource(src);
         if (res.isEmpty()) {
             ReadStar.LOGGER.warn("Vanilla sun texture not found: {}", src);

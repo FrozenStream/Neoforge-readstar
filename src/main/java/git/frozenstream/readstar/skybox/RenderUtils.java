@@ -6,6 +6,11 @@ import org.lwjgl.system.MemoryUtil;
 
 import com.mojang.blaze3d.vertex.ByteBufferBuilder;
 
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.Font;
+import net.minecraft.network.chat.Component;
+import net.minecraft.world.entity.vehicle.Minecart;
+
 public class RenderUtils {
     /**
      * 向 ByteBufferBuilder 写入一颗星的 4 个顶点（QUAD）。

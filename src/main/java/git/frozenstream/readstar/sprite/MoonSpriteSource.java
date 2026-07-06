@@ -18,35 +18,51 @@ import java.util.Optional;
 
 /**
  * 从原版读取月相贴图，裁剪中央 8×8 注入图集。1.21.1 版本。
+ * 原版 moon_phase.png 是 4×2 的小图集（每个子图 32×32），而不是分散的独立文件。
  */
 public record MoonSpriteSource() implements SpriteSource {
 
-    private static final int SRC_SIZE = 32, CROP_SIZE = 8;
-    private static final int OFF_X = (SRC_SIZE - CROP_SIZE) / 2;
-    private static final int OFF_Y = (SRC_SIZE - CROP_SIZE) / 2;
+    /** 图集列数 */
+    private static final int ATLAS_COLS = 4;
+    /** 图集行数 */
+    private static final int ATLAS_ROWS = 2;
+    /** 每个子图的尺寸 */
+    private static final int CELL_SIZE = 32;
+    /** 裁剪后的尺寸 */
+    private static final int CROP_SIZE = 8;
+    /** 从子图左上角到裁剪区域的偏移 */
+    private static final int OFF_X = (CELL_SIZE - CROP_SIZE) / 2;
+    private static final int OFF_Y = (CELL_SIZE - CROP_SIZE) / 2;
 
     public static final MapCodec<MoonSpriteSource> CODEC = MapCodec.unit(new MoonSpriteSource());
     public static final SpriteSourceType TYPE = new SpriteSourceType(CODEC);
 
     @Override
     public void run(ResourceManager manager, Output output) {
+        ResourceLocation atlasLoc = ResourceLocation.fromNamespaceAndPath(
+                "minecraft", "textures/environment/moon_phases.png");
+        Optional<Resource> res = manager.getResource(atlasLoc);
+        if (res.isEmpty()) {
+            ReadStar.LOGGER.error("Vanilla moon phase atlas not found: {}", atlasLoc);
+            return;
+        }
+
         int generated = 0;
-        for (MoonPhase phase : MoonPhase.values()) {
-            ResourceLocation src = ResourceLocation.fromNamespaceAndPath(
-                    "minecraft", "textures/environment/celestial/moon/"
-                            + phase.getSerializedName() + ".png");
-            Optional<Resource> res = manager.getResource(src);
-            if (res.isEmpty()) {
-                ReadStar.LOGGER.warn("Vanilla moon texture not found: {}", src);
-                continue;
-            }
-            try (InputStream in = res.get().open()) {
-                NativeImage source = NativeImage.read(in);
+        try (InputStream in = res.get().open()) {
+            NativeImage atlas = NativeImage.read(in);
+
+            for (MoonPhase phase : MoonPhase.values()) {
+                int idx = phase.index();
+                int col = idx % ATLAS_COLS;
+                int row = idx / ATLAS_COLS;
+                int baseX = col * CELL_SIZE;
+                int baseY = row * CELL_SIZE;
+
                 NativeImage cropped = new NativeImage(CROP_SIZE, CROP_SIZE, false);
                 for (int y = 0; y < CROP_SIZE; y++)
                     for (int x = 0; x < CROP_SIZE; x++)
-                        cropped.setPixelRGBA(x, y, source.getPixelRGBA(x + OFF_X, y + OFF_Y));
-                source.close();
+                        cropped.setPixelRGBA(x, y,
+                                atlas.getPixelRGBA(baseX + OFF_X + x, baseY + OFF_Y + y));
 
                 ResourceLocation sid = ResourceLocation.fromNamespaceAndPath(
                         ReadStar.MODID,
@@ -54,12 +70,12 @@ public record MoonSpriteSource() implements SpriteSource {
                 output.add(sid, loader -> new SpriteContents(sid,
                         new FrameSize(CROP_SIZE, CROP_SIZE), cropped, ResourceMetadata.EMPTY));
                 generated++;
-            } catch (Exception e) {
-                ReadStar.LOGGER.error("Failed moon sprite for {}: {}",
-                        phase.getSerializedName(), e.getMessage());
             }
+            atlas.close();
+        } catch (Exception e) {
+            ReadStar.LOGGER.error("Failed to generate moon sprites: {}", e.getMessage());
         }
-        ReadStar.LOGGER.info("Generated {} cropped moon sprites from vanilla textures", generated);
+        ReadStar.LOGGER.info("Generated {} cropped moon sprites from vanilla atlas", generated);
     }
 
     @Override

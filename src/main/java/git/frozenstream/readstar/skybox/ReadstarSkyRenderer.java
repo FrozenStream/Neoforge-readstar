@@ -831,18 +831,18 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         composed.scale(size, -1.0F, size);
         
 
-        RenderSystem.depthMask(false);
         RenderSystem.disableDepthTest();
         RenderSystem.setShaderTexture(0, this.celestialsAtlas.location());
         RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, rainBrightness);
         RenderSystem.setShader(GameRenderer::getPositionTexShader);
+        RenderSystem.enableBlend();
+        RenderSystem.blendFuncSeparate(GlStateManager.SourceFactor.SRC_ALPHA, GlStateManager.DestFactor.ONE, GlStateManager.SourceFactor.ONE, GlStateManager.DestFactor.ZERO);
         ShaderInstance shader = RenderSystem.getShader();
 
         buffer.bind();
         buffer.drawWithShader(composed, projectionMatrix, shader);
         VertexBuffer.unbind();
 
-        RenderSystem.depthMask(true);
         RenderSystem.enableDepthTest();
         RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
 
@@ -875,12 +875,11 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         composed.scale(size, -1.0F, size);
         
 
-        RenderSystem.depthMask(false);
         RenderSystem.disableDepthTest();
         RenderSystem.setShaderTexture(0, this.celestialsAtlas.location());
         RenderSystem.setShaderColor(rgb[0], rgb[1], rgb[2], alpha);
         RenderSystem.enableBlend();
-        RenderSystem.defaultBlendFunc();
+        RenderSystem.blendFuncSeparate(GlStateManager.SourceFactor.SRC_ALPHA, GlStateManager.DestFactor.ONE, GlStateManager.SourceFactor.ONE, GlStateManager.DestFactor.ZERO);
         RenderSystem.setShader(GameRenderer::getPositionTexColorShader);
         ShaderInstance shader = RenderSystem.getShader();
 
@@ -888,7 +887,6 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         this.haloBuffer.drawWithShader(composed, projectionMatrix, shader);
         VertexBuffer.unbind();
 
-        RenderSystem.depthMask(true);
         RenderSystem.enableDepthTest();
         RenderSystem.disableBlend();
         RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
@@ -1119,9 +1117,6 @@ public class ReadstarSkyRenderer implements AutoCloseable {
                 VertexBuffer.unbind();
 
                 RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
-
-                
-                
                 buffer.close();
             }
         }
@@ -1156,7 +1151,6 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         composed.mul(poseStack.last().pose());
 
         RenderSystem.setShader(() -> shader);
-        RenderSystem.depthMask(false);
         shader.safeGetUniform("FovCompensation").set(fovCompensation);
         RenderSystem.setShaderTexture(0, this.starsAtlas.location());
         RenderSystem.setShaderColor(1, 1, 1, starBrightness);
@@ -1191,7 +1185,7 @@ public class ReadstarSkyRenderer implements AutoCloseable {
                     FastColor.ARGB32.alpha(sunriseAndSunsetColor) / 255.0F);
             RenderSystem.setShader(GameRenderer::getPositionColorShader);
             RenderSystem.enableBlend();
-            RenderSystem.blendFuncSeparate(GlStateManager.SourceFactor.SRC_ALPHA, GlStateManager.DestFactor.ONE, GlStateManager.SourceFactor.ONE, GlStateManager.DestFactor.ZERO);
+            RenderSystem.defaultBlendFunc();
             ShaderInstance shader = RenderSystem.getShader();
 
             this.sunriseBuffer.bind();
@@ -1237,9 +1231,6 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         VertexBuffer.unbind();
 
         RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
-
-        
-        
     }
 
     /**
@@ -1248,7 +1239,10 @@ public class ReadstarSkyRenderer implements AutoCloseable {
      */
     public void renderHud(GuiGraphics g, CelestialBody observer, List<Star> stars) {
         Minecraft mc = Minecraft.getInstance();
-        if (mc.player == null || mc.options.hideGui) return;
+        Font font = mc.font;
+        int brightColor = 0xCCFFFFFF;
+
+        if (mc.player == null) return;
         if (!mc.player.isScoping()) return; // 仅在使用望远镜时显示
         if (observer == null) return;
         if (stars == null || stars.isEmpty()) return; // 星表尚未加载
@@ -1263,33 +1257,22 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         Star nearestStar = null;
         float bestDot = -1.0f;
         for (Star s : stars) {
-            float dot = celestialDir.dot(s.direction);
+            float dot = celestialDir.dot(s.direction());
             if (dot > bestDot) {
                 bestDot = dot;
                 nearestStar = s;
             }
         }
-
-        Font font = mc.font;
-        int dimColor = 0xCC888888;
-        int brightColor = 0xCCFFFFFF;
-
-        // 左上角：高度角
-        float altitude = (float) Math.toDegrees(Math.asin(Math.max(-1.0, Math.min(1.0, celestialDir.y))));
-        g.drawString(font, String.format("Alt: %+.1f°", altitude), 10, 10, dimColor);
-
-        // 对准某颗星时（夹角 < 2°），在星星的屏幕位置绘制跟随 tooltip
-        float threshold = (float) Math.cos(Math.toRadians(1.0));
-        if (nearestStar == null || bestDot <= threshold) return;
+        if (nearestStar == null) return;
 
         // 星星方向变换到世界空间
         Quaternionf localToWorld = observer.getLocalToWorldQuaternion();
         Vector3f starWorldDir = new Quaternionf(localToWorld).transform(
-                new Vector3f(nearestStar.direction));
+                new Vector3f(nearestStar.direction()));
 
         // 射线遮挡检测：玩家视线被地形/建筑挡住 → 不显示 tooltip
         Vec3 eyePos = mc.player.getEyePosition(1.0f);
-        Vec3 rayEnd = eyePos.add(starWorldDir.x * 256, starWorldDir.y * 256, starWorldDir.z * 256);
+        Vec3 rayEnd = eyePos.add(starWorldDir.x * 32, starWorldDir.y * 32, starWorldDir.z * 32);
         net.minecraft.world.level.ClipContext ctx = new net.minecraft.world.level.ClipContext(
                 eyePos, rayEnd,
                 net.minecraft.world.level.ClipContext.Block.VISUAL,
@@ -1299,9 +1282,14 @@ public class ReadstarSkyRenderer implements AutoCloseable {
 
         // 摄像机基向量（世界坐标）
         Vector3f forward = new Vector3f((float) worldLook.x, (float) worldLook.y, (float) worldLook.z);
-        Vec3 upVec = mc.player.getUpVector(1.0f);
-        Vector3f up = new Vector3f((float) upVec.x, (float) upVec.y, (float) upVec.z);
-        Vector3f right = new Vector3f(forward).cross(up).normalize();
+        Vector3f worldUp = new Vector3f(0.0F, 1.0F, 0.0F);
+        Vector3f right = new Vector3f(forward).cross(worldUp);
+        // 处理视线垂直向上/向下时 right 退化的边界情况
+        if (right.lengthSquared() < 0.0001f) {
+            right.set(0.0F, 0.0F, 1.0F);
+        }
+        right.normalize();
+        Vector3f up = new Vector3f(right).cross(forward).normalize();
 
         // 角偏移
         float dotF = starWorldDir.dot(forward);
@@ -1310,12 +1298,12 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         float dotU = starWorldDir.dot(up);
 
         // 映射到屏幕像素
-        float fov = (float) event_fov;
+        float fov = (float)event_fov;
         int screenW = mc.getWindow().getGuiScaledWidth();
         int screenH = mc.getWindow().getGuiScaledHeight();
         float aspectRatio = (float) screenW / screenH;
         float vFovRad = (float) Math.toRadians(fov);
-        float hFovRad = 2f * (float) Math.atan(Math.tan(vFovRad / 2) * aspectRatio);
+        float hFovRad = 2f * (float) java.lang.Math.atan(Math.tan(vFovRad / 2) * aspectRatio);
 
         float hAngle = (float) Math.atan2(dotR, dotF);
         float vAngle = (float) Math.atan2(dotU, dotF);
@@ -1326,11 +1314,10 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         int screenY = (int) (cy - vAngle / (vFovRad / 2f) * cy);
 
         // 在星星上方绘制 tooltip，避免遮挡
-        Component tip = Component.translatable("hud.readstar.star_tooltip",
-                nearestStar.name, nearestStar.mag);
+        Component tip = Component.translatable("hud.readstar.star_tooltip", nearestStar.name(), nearestStar.mag());
         int textW = font.width(tip.getString());
         int tipY = screenY - font.lineHeight - 5; // 星星上方
-        g.drawString(font, tip, screenX - textW / 2, tipY, brightColor);
+        g.drawString(font, tip, screenX - textW / 2, tipY, brightColor, true);
     }
 
     @Override
