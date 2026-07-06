@@ -137,7 +137,8 @@ public class ReadstarSkyboxRenderer implements CustomSkyboxRenderer, ResourceMan
         } else {
             PoseStack poseStack = new PoseStack();
             // 1. 天空底色 — 天球图纹理（跟随 observer 天球坐标系旋转）
-            skyRenderer.renderSkyDisc(state.skyColor);
+            int atmosphereHSV = (this.observer != null && this.observer.hasAtmosphere) ? this.observer.atmosphereHSV : 0;
+            skyRenderer.renderSkyDisc(state.skyColor, atmosphereHSV);
             skyRenderer.renderCosmicBackground(state.skyColor, this.observer, state.starBrightness);
             skyRenderer.renderSunriseAndSunset(poseStack, state.sunAngle, state.sunriseAndSunsetColor);
             // 2. 天体 + 星星

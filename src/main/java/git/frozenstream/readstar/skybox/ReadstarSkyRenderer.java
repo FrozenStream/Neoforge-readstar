@@ -128,10 +128,9 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         Identifier spriteId = Identifier.fromNamespaceAndPath(ReadStar.MODID,
                 "environment/celestial/luminous/" + name);
         TextureAtlasSprite sprite = celestialsAtlas.getSprite(spriteId);
-        if (sprite == celestialsAtlas.missingSprite()) {
+        if (sprite == celestialsAtlas.missingSprite()) 
             ReadStar.LOGGER.warn("Luminous sprite not found: {}", spriteId);
-            return null;
-        }
+
         return buildQuadBuffer(name, "luminous", List.of(sprite));
     }
 
@@ -147,13 +146,9 @@ public class ReadstarSkyRenderer implements AutoCloseable {
             Identifier spriteId = Identifier.fromNamespaceAndPath(ReadStar.MODID,
                     "environment/celestial/non-luminous/" + name + "/" + phase.getSerializedName());
             TextureAtlasSprite sprite = celestialsAtlas.getSprite(spriteId);
-            if (sprite != celestialsAtlas.missingSprite()) {
-                sprites.add(sprite);
-            }
-        }
-
-        if (sprites.isEmpty()) {
-            return null;
+            if (sprite == celestialsAtlas.missingSprite()) 
+                ReadStar.LOGGER.warn("Nonluminous sprite not found: {}", spriteId);
+            sprites.add(sprite);
         }
 
         return buildQuadBuffer(name, "non-luminous", sprites);
@@ -549,9 +544,30 @@ public class ReadstarSkyRenderer implements AutoCloseable {
         modelViewStack.popMatrix();
     }
 
-    public void renderSkyDisc(int skyColor) {
+    public void renderSkyDisc(int skyColor, int atmosphereHSV) {
+        // 如果观测者有大氣，將 skyColor 與大氣顏色混合
+        Vector4f color;
+        if (atmosphereHSV != 0) {
+            Vector4f skyRGBA = ARGB.vector4fFromARGB32(skyColor);
+            float atmH = RenderUtils.getHueFloat(atmosphereHSV);
+            float atmS = RenderUtils.getSaturationFloat(atmosphereHSV);
+            float atmV = RenderUtils.getValueFloat(atmosphereHSV);
+            // 以大气颜色为主体，skyColor 仅轻微染色
+            float[] atmRGB = RenderUtils.hsvToRgb(atmH, atmS, atmV);
+            float atmWeight = 0.8f; // 大气权重
+            float skyWeight = 1.0f - atmWeight;
+            color = new Vector4f(
+                atmRGB[0] * atmWeight + skyRGBA.x * skyWeight,
+                atmRGB[1] * atmWeight + skyRGBA.y * skyWeight,
+                atmRGB[2] * atmWeight + skyRGBA.z * skyWeight,
+                skyRGBA.w * atmV  // 整体透明度随大气亮度缩放
+            );
+        } else {
+            color = ARGB.vector4fFromARGB32(skyColor);
+        }
+
         GpuBufferSlice dynamicTransforms = RenderSystem.getDynamicUniforms()
-                .writeTransform(RenderSystem.getModelViewMatrix(), ARGB.vector4fFromARGB32(skyColor), new Vector3f(),
+                .writeTransform(RenderSystem.getModelViewMatrix(), color, new Vector3f(),
                         new Matrix4f());
         GpuTextureView colorTexture = Minecraft.getInstance().getMainRenderTarget().getColorTextureView();
         GpuTextureView depthTexture = Minecraft.getInstance().getMainRenderTarget().getDepthTextureView();
@@ -874,9 +890,9 @@ public class ReadstarSkyRenderer implements AutoCloseable {
      * @param poseStack     PoseStack 变换
      */
     private void renderGlow(int glowHSV, float size, float rainBrightness, PoseStack poseStack) {
-        float h = CelestialBody.getHueFloat(glowHSV);
-        float s = CelestialBody.getSaturationFloat(glowHSV);
-        float v = CelestialBody.getValueFloat(glowHSV);
+        float h = RenderUtils.getHueFloat(glowHSV);
+        float s = RenderUtils.getSaturationFloat(glowHSV);
+        float v = RenderUtils.getValueFloat(glowHSV);
 
         // HSV → RGB，alpha 由 V × rainBrightness 控制
         float[] rgb = RenderUtils.hsvToRgb(h, s, 1.0f);
