@@ -1,4 +1,9 @@
 {
+  "dimensionMap": {
+    "minecraft:overworld": "Sun/Earth",
+    "minecraft:the_nether": null,
+    "minecraft:the_end": null
+  },
   "System": {
     "Sun": {
       "mass": 2.0e30,

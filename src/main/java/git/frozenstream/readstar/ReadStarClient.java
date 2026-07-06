@@ -18,7 +18,6 @@ import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 import net.minecraft.util.ARGB;
-import net.minecraft.world.level.Level;
 import org.joml.Vector3f;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
@@ -115,14 +114,26 @@ public class ReadStarClient {
         long daylightTime = level.getDefaultClockTime();
         CelestialBodyManager.getInstance().updatePositions(20 * gameTime);
 
-        // ==== 设置观测者 ====
-        if (level.dimension() == Level.OVERWORLD) {
+        // ==== 设置观测者（查 dimensionMap，无映射则回退原版天空） ====
+        Identifier dimId = level.dimension().identifier();
+        String bodyPath = CelestialBodyManager.getInstance().getDimensionMap().get(dimId);
+        if (bodyPath != null) {
             event.getRenderState().customSkyboxRenderer = skyboxRenderer;
-            CelestialBody observer = CelestialBodyManager.getInstance().getCelestialBody("earth");
+            // 路径 "Sun/Earth" → 取末段作为天体名 → 小写
+            String bodyName = bodyPath.contains("/")
+                    ? bodyPath.substring(bodyPath.lastIndexOf('/') + 1).toLowerCase()
+                    : bodyPath.toLowerCase();
+            CelestialBody observer = CelestialBodyManager.getInstance().getCelestialBody(bodyName);
             if (observer != null) {
                 skyboxRenderer.setObserver(observer);
                 observer.updateCurrentVec(daylightTime);
+            } else {
+                ReadStar.LOGGER.warn("No celestial body found for path '{}' (dimension {})", bodyPath, dimId);
             }
+        } else {
+            // 无映射 → 清除自定义天空，回退原版
+            event.getRenderState().customSkyboxRenderer = null;
+            skyboxRenderer.setObserver(null);
         }
 
         // ==== 处理 skycolor + 日食检测 ====
